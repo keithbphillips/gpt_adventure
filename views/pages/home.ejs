@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - GPT Adventure</title>
+    <!-- Bootstrap CSS removed due to CSP restrictions - using inline styles instead -->
+    <style>
+        /* Orbitron font removed due to CSP - using system fonts with fallbacks */
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            color: #00ff41;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Essential Bootstrap-like classes */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 -15px;
+        }
+        
+        .col-12 {
+            width: 100%;
+            padding: 0 15px;
+        }
+        
+        .col-lg-6 {
+            width: 50%;
+            padding: 0 15px;
+        }
+        
+        .col-lg-10 {
+            width: 83.333333%;
+            padding: 0 15px;
+        }
+        
+        .col-md-6 {
+            width: 50%;
+            padding: 0 15px;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .mx-auto {
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .mb-2 {
+            margin-bottom: 0.5rem;
+        }
+        
+        .mb-3 {
+            margin-bottom: 1rem;
+        }
+        
+        .mb-4 {
+            margin-bottom: 1.5rem;
+        }
+        
+        .mb-5 {
+            margin-bottom: 3rem;
+        }
+        
+        .mt-3 {
+            margin-top: 1rem;
+        }
+        
+        .mt-5 {
+            margin-top: 3rem;
+        }
+        
+        .me-3 {
+            margin-right: 1rem;
+        }
+        
+        .h-100 {
+            height: 100%;
+        }
+        
+        .d-flex {
+            display: flex;
+        }
+        
+        .align-items-center {
+            align-items: center;
+        }
+        
+        .justify-content-center {
+            justify-content: center;
+        }
+        
+        @media (max-width: 768px) {
+            .col-lg-6, .col-lg-10, .col-md-6 {
+                width: 100%;
+            }
+        }
+        
+        /* Matrix rain effect */
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.1;
+        }
+        
+        /* Glitch effect for title */
+        .glitch {
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
+            font-weight: 900;
+            text-transform: uppercase;
+            position: relative;
+            color: #00ff41;
+            font-size: 3rem;
+            letter-spacing: 0.1em;
+            animation: glitch-skew 1s infinite linear alternate-reverse;
+            margin-bottom: 0.5rem;
+        }
+        
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .glitch::before {
+            animation: glitch-anim 0.5s infinite linear alternate-reverse;
+            color: #ff0041;
+            z-index: -1;
+        }
+        
+        .glitch::after {
+            animation: glitch-anim2 1s infinite linear alternate-reverse;
+            color: #00ffff;
+            z-index: -2;
+        }
+        
+        @keyframes glitch-anim {
+            0% { clip: rect(64px, 9999px, 66px, 0); }
+            5% { clip: rect(30px, 9999px, 36px, 0); }
+            10% { clip: rect(80px, 9999px, 90px, 0); }
+            15% { clip: rect(40px, 9999px, 50px, 0); }
+            20% { clip: rect(10px, 9999px, 20px, 0); }
+            25% { clip: rect(70px, 9999px, 80px, 0); }
+            30% { clip: rect(20px, 9999px, 30px, 0); }
+            35% { clip: rect(90px, 9999px, 100px, 0); }
+            40% { clip: rect(50px, 9999px, 60px, 0); }
+            45% { clip: rect(0px, 9999px, 10px, 0); }
+            50% { clip: rect(60px, 9999px, 70px, 0); }
+            100% { clip: rect(70px, 9999px, 80px, 0); }
+        }
+        
+        @keyframes glitch-anim2 {
+            0% { clip: rect(65px, 9999px, 100px, 0); }
+            25% { clip: rect(85px, 9999px, 90px, 0); }
+            50% { clip: rect(40px, 9999px, 60px, 0); }
+            75% { clip: rect(30px, 9999px, 50px, 0); }
+            100% { clip: rect(25px, 9999px, 40px, 0); }
+        }
+        
+        @keyframes glitch-skew {
+            0% { transform: skew(2deg); }
+            10% { transform: skew(-1deg); }
+            20% { transform: skew(1deg); }
+            30% { transform: skew(0deg); }
+            40% { transform: skew(1deg); }
+            50% { transform: skew(-1deg); }
+            60% { transform: skew(0deg); }
+            70% { transform: skew(1deg); }
+            80% { transform: skew(0deg); }
+            90% { transform: skew(2deg); }
+            100% { transform: skew(1deg); }
+        }
+        
+        /* Navigation */
+        .navbar {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 2px solid #00ff41;
+            padding: 1rem 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .navbar-brand {
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
+            font-weight: 700;
+            color: #00ff41;
+            font-size: 1.5rem;
+            text-decoration: none;
+        }
+        
+        .navbar-nav {
+            display: flex;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            align-items: center;
+        }
+        
+        .nav-item {
+            margin: 0 0.5rem;
+        }
+        
+        .nav-link {
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+        }
+        
+        .nav-link:hover {
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        
+        .navbar-toggler {
+            display: none;
+            background: transparent;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .dropdown-menu {
+            background: rgba(0,0,0,0.9);
+            border: 1px solid #00ff41;
+            margin-top: 0.5rem;
+        }
+        
+        .dropdown-item {
+            color: #00ff41;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            display: block;
+        }
+        
+        .dropdown-item:hover {
+            background: rgba(0, 255, 65, 0.1);
+            color: #00ff41;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar-toggler {
+                display: block;
+            }
+            
+            .navbar-nav {
+                display: none;
+                flex-direction: column;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: rgba(0, 0, 0, 0.95);
+                border-top: 1px solid #00ff41;
+            }
+            
+            .navbar-nav.show {
+                display: flex;
+            }
+        }
+        
+        /* Hero section */
+        .hero {
+            min-height: 35vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 1.5rem 0 0.5rem 0;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            color: #00ffff;
+            margin: 1rem 0;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Terminal cards */
+        .adventure-card {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 0.5rem 0;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .adventure-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .adventure-card:hover::before {
+            left: 100%;
+        }
+        
+        .adventure-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 65, 0.3);
+        }
+        
+        .card-adventure { border-color: #00ff41; }
+        .card-adventure:hover { border-color: #00ff41; box-shadow: 0 10px 30px rgba(0, 255, 65, 0.5); }
+        
+        .card-scifi { border-color: #00ffff; }
+        .card-scifi:hover { border-color: #00ffff; box-shadow: 0 10px 30px rgba(0, 255, 255, 0.5); }
+        
+        .card-mystery { border-color: #ffaa00; }
+        .card-mystery:hover { border-color: #ffaa00; box-shadow: 0 10px 30px rgba(255, 170, 0, 0.5); }
+        
+        .card-custom { border-color: #cc66ff; }
+        .card-custom:hover { border-color: #cc66ff; box-shadow: 0 10px 30px rgba(204, 102, 255, 0.5); }
+        
+        .card-title {
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
+            font-weight: 700;
+            font-size: 1.2rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        .card-adventure .card-title { color: #00ff41; }
+        .card-scifi .card-title { color: #00ffff; }
+        .card-mystery .card-title { color: #ffaa00; }
+        .card-custom .card-title { color: #cc66ff; }
+        
+        /* Buttons */
+        .btn-terminal {
+            background: transparent;
+            color: inherit;
+            border: 2px solid;
+            padding: 0.8rem 2rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-terminal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: currentColor;
+            opacity: 0.1;
+            transition: left 0.3s ease;
+        }
+        
+        .btn-terminal:hover::before {
+            left: 0;
+        }
+        
+        .btn-terminal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn-adventure { border-color: #00ff41; color: #00ff41; }
+        .btn-adventure:hover { color: #00ff41; text-shadow: 0 0 10px #00ff41; }
+        
+        .btn-scifi { border-color: #00ffff; color: #00ffff; }
+        .btn-scifi:hover { color: #00ffff; text-shadow: 0 0 10px #00ffff; }
+        
+        .btn-mystery { border-color: #ffaa00; color: #ffaa00; }
+        .btn-mystery:hover { color: #ffaa00; text-shadow: 0 0 10px #ffaa00; }
+        
+        .btn-custom { border-color: #cc66ff; color: #cc66ff; }
+        .btn-custom:hover { color: #cc66ff; text-shadow: 0 0 10px #cc66ff; }
+        
+        .btn-primary-glow {
+            background: linear-gradient(45deg, #00ff41, #00ffff);
+            border: none;
+            color: #000;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary-glow:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0, 255, 65, 0.4);
+            color: #000;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .glitch {
+                font-size: 2rem;
+            }
+            
+            .subtitle {
+                font-size: 1rem;
+            }
+            
+            .adventure-card {
+                padding: 1rem;
+            }
+            
+            .hero {
+                min-height: 35vh;
+                padding: 1rem 0 0.5rem 0;
+            }
+        }
+        
+        /* Pulse animation for accent elements */
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* Typing animation */
+        .typewriter {
+            overflow: hidden;
+            border-right: .15em solid #00ff41;
+            white-space: nowrap;
+            margin: 0 auto;
+            letter-spacing: .15em;
+            animation: typing 3.5s steps(27, end), blink-caret .75s step-end infinite;
+            width: fit-content;
+            max-width: 100%;
+        }
+        
+        @keyframes typing {
+            0% { width: 0; }
+            100% { width: 100%; }
+        }
+        
+        @keyframes blink-caret {
+            from, to { border-color: transparent }
+            50% { border-color: #00ff41; }
+        }
+        
+        /* Popup Window Styles */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .popup-window {
+            background: #c0c0c0;
+            border: 2px outset #c0c0c0;
+            box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.5);
+            font-family: 'MS Sans Serif', sans-serif;
+            font-size: 11px;
+            min-width: 300px;
+            max-width: 400px;
+        }
+        
+        .popup-titlebar {
+            background: linear-gradient(90deg, #0054e3, #0078d4);
+            color: white;
+            padding: 3px 6px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+        
+        .popup-close {
+            background: #c0c0c0;
+            border: 1px outset #c0c0c0;
+            width: 16px;
+            height: 14px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .popup-close:hover {
+            background: #e0e0e0;
+        }
+        
+        .popup-close:active {
+            border: 1px inset #c0c0c0;
+        }
+        
+        .popup-content {
+            padding: 15px;
+            background: #c0c0c0;
+        }
+        
+        .popup-message {
+            color: #000;
+            margin-bottom: 15px;
+            font-size: 11px;
+            font-family: 'MS Sans Serif', sans-serif;
+        }
+        
+        .popup-form {
+            margin: 10px 0;
+        }
+        
+        .popup-label {
+            display: block;
+            color: #000;
+            font-size: 11px;
+            margin-bottom: 3px;
+            font-family: 'MS Sans Serif', sans-serif;
+        }
+        
+        .popup-input {
+            width: 100%;
+            padding: 2px 4px;
+            border: 1px inset #c0c0c0;
+            background: white;
+            color: #000;
+            font-size: 11px;
+            font-family: 'MS Sans Serif', sans-serif;
+            margin-bottom: 8px;
+        }
+        
+        .popup-input:focus {
+            outline: 1px dotted #000;
+            outline-offset: -1px;
+        }
+        
+        .popup-buttons {
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .popup-button {
+            background: #c0c0c0;
+            border: 1px outset #c0c0c0;
+            padding: 2px 16px;
+            margin: 0 5px;
+            font-size: 11px;
+            font-family: 'MS Sans Serif', sans-serif;
+            cursor: pointer;
+            min-width: 75px;
+        }
+        
+        .popup-button:hover {
+            background: #e0e0e0;
+        }
+        
+        .popup-button:active {
+            border: 1px inset #c0c0c0;
+        }
+        
+        .popup-button-primary {
+            font-weight: bold;
+        }
+        
+        /* Clickable cards for non-logged-in users */
+        .clickable-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .clickable-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 35px rgba(0, 255, 65, 0.4);
+        }
+        
+        .clickable-card:active {
+            transform: translateY(-6px);
+        }
+        
+        .card-prompt {
+            margin-top: 1rem;
+            text-align: center;
+            opacity: 0.8;
+        }
+        
+        .card-prompt:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Matrix background effect -->
+    <canvas class="matrix-bg" id="matrix"></canvas>
+    
+    <nav class="navbar">
+        <div class="container">
+            <a class="navbar-brand pulse" href="/">⚡ GPT ADVENTURE ⚡</a>
+            <div class="navbar-nav">
+                <div class="nav-item">
+                    <a class="nav-link" href="/">[HOME]</a>
+                </div>
+                <div class="nav-item">
+                    <a class="nav-link" href="/about">[ABOUT]</a>
+                </div>
+                <% if (user) { %>
+                <div class="nav-item">
+                    <span class="nav-link">[USER: <%= user.username %>]</span>
+                </div>
+                <div class="nav-item">
+                    <a class="nav-link" href="/auth/logout">[LOGOUT]</a>
+                </div>
+                <% } else { %>
+                <div class="nav-item">
+                    <a class="nav-link" href="#" id="loginBtn">[LOGIN]</a>
+                </div>
+                <div class="nav-item">
+                    <a class="nav-link" href="#" id="registerBtn">[REGISTER]</a>
+                </div>
+                <% } %>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="hero">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-10 mx-auto text-center">
+                    <h1 class="glitch" data-text="GPT ADVENTURE">GPT ADVENTURE</h1>
+                    <p class="subtitle typewriter">AI-POWERED TEXT ADVENTURES</p>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+        
+    <% if (user) { %>
+    <!-- Adventure Selection -->
+    <div class="container mb-3">
+        <div class="row">
+            <div class="col-lg-6 mb-4">
+                <div class="adventure-card card-adventure h-100">
+                    <div class="card-title">
+                        🗡️ FANTASY ADVENTURE
+                    </div>
+                    <p style="color: #cccccc; font-size: 0.9rem; line-height: 1.4;">
+                        > Initialize medieval fantasy protocol<br>
+                        > Magic systems: [ACTIVE]<br>
+                        > Monster database: [LOADED]<br>
+                        > Treasure generation: [ENABLED]
+                    </p>
+                    <div class="mt-auto">
+                        <a href="/adventure" class="btn btn-terminal btn-adventure">ENTER REALM</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6 mb-4">
+                <div class="adventure-card card-scifi h-100">
+                    <div class="card-title">
+                        🚀 SCI-FI EXPEDITION
+                    </div>
+                    <p style="color: #cccccc; font-size: 0.9rem; line-height: 1.4;">
+                        > Launch space exploration mode<br>
+                        > Alien contact protocols: [READY]<br>
+                        > Technology matrix: [ONLINE]<br>
+                        > Starship systems: [OPERATIONAL]
+                    </p>
+                    <div class="mt-auto">
+                        <a href="/scifi" class="btn btn-terminal btn-scifi">ENGAGE HYPERDRIVE</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6 mb-4">
+                <div class="adventure-card card-mystery h-100">
+                    <div class="card-title">
+                        🔍 MYSTERY INVESTIGATION
+                    </div>
+                    <p style="color: #cccccc; font-size: 0.9rem; line-height: 1.4;">
+                        > Activate detective protocols<br>
+                        > Evidence analysis: [INITIALIZED]<br>
+                        > Noir atmosphere: [GENERATED]<br>
+                        > Case files: [CLASSIFIED]
+                    </p>
+                    <div class="mt-auto">
+                        <a href="/mystery" class="btn btn-terminal btn-mystery">BEGIN INVESTIGATION</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6 mb-4">
+                <div class="adventure-card card-custom h-100">
+                    <div class="card-title">
+                        ⚡ CUSTOM UNIVERSE
+                    </div>
+                    <p style="color: #cccccc; font-size: 0.9rem; line-height: 1.4;">
+                        > Boot reality engine<br>
+                        > Universe parameters: [UNDEFINED]<br>
+                        > Creative limits: [DISABLED]<br>
+                        > Imagination protocols: [UNLIMITED]
+                    </p>
+                    <div class="mt-auto">
+                        <a href="/custom" class="btn btn-terminal btn-custom">CREATE REALITY</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    <% } else { %>
+    <!-- Feature Preview for Non-Users -->
+    <div class="container mb-3">
+        <div class="row">
+            <div class="col-lg-10 mx-auto">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="adventure-card card-adventure clickable-card" id="adventureCard" data-mode="adventure" data-title="Fantasy Adventure">
+                            <div class="card-title">🏰 FANTASY REALMS</div>
+                            <p style="color: #cccccc;">
+                                Embark on epic quests through mystical lands filled with magic, dragons, and ancient treasures waiting to be discovered.
+                            </p>
+                            <div class="card-prompt">
+                                <small style="color: #00ff41; font-style: italic;">▶ Click to login and start your adventure</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="adventure-card card-scifi clickable-card" id="scifiCard" data-mode="scifi" data-title="Sci-Fi Adventure">
+                            <div class="card-title">🌌 COSMIC EXPLORATION</div>
+                            <p style="color: #cccccc;">
+                                Navigate through the vast cosmos, encounter alien civilizations, and unlock the mysteries of advanced technology.
+                            </p>
+                            <div class="card-prompt">
+                                <small style="color: #00ffff; font-style: italic;">▶ Click to login and explore the cosmos</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="adventure-card card-mystery clickable-card" id="mysteryCard" data-mode="mystery" data-title="Mystery Investigation">
+                            <div class="card-title">🕵️ NOIR MYSTERIES</div>
+                            <p style="color: #cccccc;">
+                                Step into the shadows of detective fiction, solve complex puzzles, and uncover dark secrets in atmospheric noir settings.
+                            </p>
+                            <div class="card-prompt">
+                                <small style="color: #ffaa00; font-style: italic;">▶ Click to login and solve mysteries</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="adventure-card card-custom clickable-card" id="customCard" data-mode="custom" data-title="Custom Universe">
+                            <div class="card-title">🎨 INFINITE POSSIBILITIES</div>
+                            <p style="color: #cccccc;">
+                                Unleash your imagination and create adventures in any universe you can dream of - the only limit is your creativity.
+                            </p>
+                            <div class="card-prompt">
+                                <small style="color: #cc66ff; font-style: italic;">▶ Click to login and create your universe</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <% } %>
+
+    <!-- Custom Popup Windows -->
+    <div id="popupOverlay" class="popup-overlay" style="display: none;">
+        <div id="popupWindow" class="popup-window">
+            <div class="popup-titlebar">
+                <span id="popupTitle">System Dialog</span>
+                <button class="popup-close" id="popupCloseBtn">×</button>
+            </div>
+            <div id="popupContent" class="popup-content">
+                <!-- Content will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS removed due to CSP restrictions -->
+    
+    <!-- Matrix rain effect -->
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const matrix = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()*&^%+-/~{[|`]}";
+        const matrixArray = matrix.split("");
+
+        const font_size = 10;
+        const columns = canvas.width / font_size;
+
+        const drops = [];
+        for(let x = 0; x < columns; x++) {
+            drops[x] = 1;
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff41';
+            ctx.font = font_size + 'px arial';
+
+            for(let i = 0; i < drops.length; i++) {
+                const text = matrixArray[Math.floor(Math.random() * matrixArray.length)];
+                ctx.fillText(text, i * font_size, drops[i] * font_size);
+
+                if(drops[i] * font_size > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(draw, 35);
+
+        // Resize canvas on window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // Popup window functions
+        function showPopup(title, content) {
+            document.getElementById('popupTitle').textContent = title;
+            document.getElementById('popupContent').innerHTML = content;
+            document.getElementById('popupOverlay').style.display = 'flex';
+        }
+        
+        function closePopup() {
+            document.getElementById('popupOverlay').style.display = 'none';
+        }
+        
+        function showLoginPopup(storyMode = null, storyTitle = null) {
+            let message = 'Please enter your login credentials:';
+            let redirectUrl = '/auth/login';
+            
+            if (storyMode && storyTitle) {
+                message = `Login required to access ${storyTitle}!`;
+                redirectUrl = `/auth/login?redirect=/${storyMode}`;
+            }
+            
+            const content = `
+                <div class="popup-message">${message}</div>
+                <form action="${redirectUrl}" method="POST" class="popup-form">
+                    <label class="popup-label">Username:</label>
+                    <input type="text" name="username" class="popup-input" required autocomplete="username">
+                    
+                    <label class="popup-label">Password:</label>
+                    <input type="password" name="password" class="popup-input" required autocomplete="current-password">
+                    
+                    <div class="popup-buttons">
+                        <button type="submit" class="popup-button popup-button-primary">Login & Play</button>
+                        <button type="button" class="popup-button popup-cancel">Cancel</button>
+                    </div>
+                </form>
+                <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #666;">
+                    Don't have an account? <a href="#" id="switchToRegister" style="color: #000; text-decoration: underline;">Create one here</a>
+                </div>
+            `;
+            showPopup('Login Required', content);
+            
+            // Add event listener for the register link
+            setTimeout(() => {
+                const switchLink = document.getElementById('switchToRegister');
+                if (switchLink) {
+                    switchLink.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        showRegisterPopup(storyMode, storyTitle);
+                    });
+                }
+            }, 100);
+        }
+        
+        function showRegisterPopup(storyMode = null, storyTitle = null) {
+            let message = 'Create a new account:';
+            let redirectUrl = '/auth/register';
+            
+            if (storyMode && storyTitle) {
+                message = `Create an account to access ${storyTitle}!`;
+                redirectUrl = `/auth/register?redirect=/${storyMode}`;
+            }
+            
+            const content = `
+                <div class="popup-message">${message}</div>
+                <form action="${redirectUrl}" method="POST" class="popup-form">
+                    <label class="popup-label">Username:</label>
+                    <input type="text" name="username" class="popup-input" required autocomplete="username">
+                    
+                    <label class="popup-label">Password:</label>
+                    <input type="password" name="password" class="popup-input" required autocomplete="new-password">
+                    
+                    <label class="popup-label">Confirm Password:</label>
+                    <input type="password" name="confirmPassword" class="popup-input" required autocomplete="new-password">
+                    
+                    <div class="popup-buttons">
+                        <button type="submit" class="popup-button popup-button-primary">Register & Play</button>
+                        <button type="button" class="popup-button popup-cancel">Cancel</button>
+                    </div>
+                </form>
+                <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #666;">
+                    Already have an account? <a href="#" id="switchToLogin" style="color: #000; text-decoration: underline;">Login here</a>
+                </div>
+            `;
+            showPopup('Create Account', content);
+            
+            // Add event listener for the login link
+            setTimeout(() => {
+                const switchLink = document.getElementById('switchToLogin');
+                if (switchLink) {
+                    switchLink.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        showLoginPopup(storyMode, storyTitle);
+                    });
+                }
+            }, 100);
+        }
+        
+        // Close popup when clicking overlay
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'popupOverlay') {
+                closePopup();
+            }
+        });
+        
+        // Close popup with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePopup();
+            }
+        });
+        
+        // Add event listeners when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Login button
+            const loginBtn = document.getElementById('loginBtn');
+            if (loginBtn) {
+                loginBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showLoginPopup();
+                });
+            }
+            
+            // Register button  
+            const registerBtn = document.getElementById('registerBtn');
+            if (registerBtn) {
+                registerBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showRegisterPopup();
+                });
+            }
+            
+            // Close button in popup (will be added dynamically)
+            document.addEventListener('click', function(e) {
+                if (e.target.id === 'popupCloseBtn' || e.target.classList.contains('popup-cancel')) {
+                    closePopup();
+                }
+            });
+            
+            // Adventure card clicks for non-logged-in users
+            const clickableCards = document.querySelectorAll('.clickable-card');
+            clickableCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const storyMode = this.dataset.mode;
+                    const storyTitle = this.dataset.title;
+                    showLoginPopup(storyMode, storyTitle);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

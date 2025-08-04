@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - GPT Adventure</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .lowerstat {
+            color: white;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 5px;
+            background-color: #ffcc00;
+            transition: width 0.3s ease-in-out;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .sidebar {
+            flex: 0 0 250px;
+            background: #001122;
+            border-right: 2px solid #00ffff;
+            padding: 15px;
+            overflow-y: auto;
+            color: #00ffff;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            font-size: 12px;
+        }
+
+        .sidebar h5 {
+            color: #00ffff;
+            text-transform: uppercase;
+            border-bottom: 1px solid #00ffff;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+
+        .terminal {
+            flex: 1;
+            background-color: #000;
+            overflow-y: auto;
+            padding: 20px;
+            white-space: pre-wrap;
+            color: #00ffff;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .terminal img {
+            max-width: 100%;
+        }
+
+        .terminal-input {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+            padding: 5px 0;
+        }
+
+        .terminal-prompt {
+            color: #00ffff;
+            margin-right: 5px;
+            font-weight: bold;
+        }
+
+        .terminal-input input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #00ffff;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            font-size: 14px;
+            flex: 1;
+            caret-color: #00ffff;
+        }
+
+        .terminal-input input::placeholder {
+            color: #006600;
+        }
+
+        /* Terminal cursor animation */
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .terminal-prompt:after {
+            content: '█';
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        .terminal-input input:focus + .terminal-prompt:after {
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-size: 12px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+
+        /* Compass styles */
+        .compass-container {
+            display: flex;
+            justify-content: center;
+            margin: 10px 0;
+        }
+
+        .compass {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle, #8B4513 0%, #A0522D 30%, #CD853F  60%, #DEB887 100%);
+            border-radius: 50%;
+            border: 3px solid #654321;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3), 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .compass-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background: #4a4a4a;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+
+        .compass-rose {
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .compass [class*="exit-"] {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fff;
+            background: #666;
+            border: 1px solid #333;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            opacity: 0.3;
+        }
+
+        .compass [class*="exit-"].available {
+            background: #28a745;
+            opacity: 1;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
+        }
+
+        .compass [class*="exit-"].available:hover {
+            background: #218838;
+            transform: scale(1.1);
+            box-shadow: 0 0 12px rgba(40, 167, 69, 0.8);
+        }
+
+        .exit-north { top: -10px; left: 50%; transform: translateX(-50%); }
+        .exit-south { bottom: -10px; left: 50%; transform: translateX(-50%); }
+        .exit-east { right: -10px; top: 50%; transform: translateY(-50%); }
+        .exit-west { left: -10px; top: 50%; transform: translateY(-50%); }
+        .exit-northeast { top: 5px; right: 5px; }
+        .exit-northwest { top: 5px; left: 5px; }
+        .exit-southeast { bottom: 5px; right: 5px; }
+        .exit-southwest { bottom: 5px; left: 5px; }
+        .exit-up { top: 15px; left: 50%; transform: translateX(-50%); }
+        .exit-down { bottom: 15px; left: 50%; transform: translateX(-50%); }
+
+        /* Location image styles */
+        .location-image-container {
+            width: 100%;
+            height: 120px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            position: relative;
+        }
+
+        .location-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            border-radius: 4px;
+        }
+
+        .location-placeholder {
+            color: #6c757d;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        /* Terminal message styling */
+        .terminal-message {
+            margin: 5px 0;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+        }
+
+        .terminal-message.user-message {
+            color: #ffff00;
+            font-weight: bold;
+        }
+
+        .terminal-message.user-message:before {
+            content: "> ";
+            color: #00ffff;
+        }
+
+        .terminal-message.ai-message {
+            color: #00ffff;
+            margin-left: 0;
+        }
+
+        .terminal-message.system-message {
+            color: #00aaff;
+            font-style: italic;
+            margin: 10px 0;
+        }
+
+        .terminal-message.system-message:before {
+            content: "[SYSTEM] ";
+            color: #0088ff;
+        }
+
+        .terminal-message.error-message {
+            color: #ff4444;
+            font-weight: bold;
+        }
+
+        .terminal-message.error-message:before {
+            content: "[ERROR] ";
+            color: #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <div class="progress-bar" id="progressBar"></div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <div class="text-center mb-3">
+                <a href="/" class="btn btn-primary" style="width: 100%; font-size: 14px; padding: 8px;" title="Return to main menu">
+                    🏠 Return to Home
+                </a>
+            </div>
+            <h5>Game Stats</h5>
+            <div class="stats-grid" id="gameStats">
+                <div><strong>Name:</strong> <span id="playerName">-</span></div>
+                <div><strong>Class:</strong> <span id="playerClass">-</span></div>
+                <div><strong>Race:</strong> <span id="playerRace">-</span></div>
+                <div><strong>Level:</strong> <span id="playerLevel">-</span></div>
+                <div><strong>Health:</strong> <span id="playerHealth">-</span></div>
+                <div><strong>XP:</strong> <span id="playerXP">-</span></div>
+                <div><strong>AC:</strong> <span id="playerAC">-</span></div>
+                <div><strong>Gold:</strong> <span id="playerGold">-</span></div>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <strong>Location:</strong> <span id="currentLocation">-</span><br>
+                <strong>Weather:</strong> <span id="currentWeather">-</span><br>
+                <strong>Time:</strong> <span id="currentTime">-</span><br>
+                <strong>Day:</strong> <span id="currentDay">-</span>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <strong>Quest:</strong> <br>
+                <span id="currentQuest">-</span>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <strong>Exits:</strong><br>
+                <div class="compass-container">
+                    <div class="compass">
+                        <div class="compass-center">
+                            <div class="compass-rose">⊕</div>
+                        </div>
+                        <div class="exit-north" id="exit-north" data-direction="north">N</div>
+                        <div class="exit-south" id="exit-south" data-direction="south">S</div>
+                        <div class="exit-east" id="exit-east" data-direction="east">E</div>
+                        <div class="exit-west" id="exit-west" data-direction="west">W</div>
+                        <div class="exit-northeast" id="exit-northeast" data-direction="northeast">NE</div>
+                        <div class="exit-northwest" id="exit-northwest" data-direction="northwest">NW</div>
+                        <div class="exit-southeast" id="exit-southeast" data-direction="southeast">SE</div>
+                        <div class="exit-southwest" id="exit-southwest" data-direction="southwest">SW</div>
+                        <div class="exit-up" id="exit-up" data-direction="up">↑</div>
+                        <div class="exit-down" id="exit-down" data-direction="down">↓</div>
+                    </div>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <strong>Location Image:</strong><br>
+                <div id="locationImage" class="location-image-container">
+                    <div class="location-placeholder">No image available</div>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <strong>Inventory:</strong> <br>
+                <span id="playerInventory">-</span>
+            </div>
+            
+            <hr>
+            
+            <div class="text-center">
+                <button class="btn btn-warning" style="width: 100%; font-size: 14px; padding: 8px;" id="restartGameBtn" title="Clear all game data and start fresh">
+                    🔄 Restart Game
+                </button>
+            </div>
+        </div>
+        
+        <div class="terminal" id="gameTerminal">
+            <div style="color: #00ffff; font-weight: bold; margin-bottom: 20px;">
+████████████████████████████████████████████████████████████████████████████████<br>
+                            SCI-FI ADVENTURE TERMINAL v2.0<br>
+████████████████████████████████████████████████████████████████████████████████<br>
+<br>
+STARSHIP SYSTEMS ONLINE. Welcome to your space adventure!<br>
+Enter commands to explore the cosmos...<br>
+<br>
+            </div>
+            <div class="loading" id="loadingIndicator" style="display: none;">
+                <div style="color: #ffff00;">
+[PROCESSING] Generating response...
+                </div>
+            </div>
+            <div class="terminal-input">
+                <span class="terminal-prompt">></span>
+                <input type="text" id="gameInput" placeholder="Enter command..." autocomplete="off">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class GameClient {
+            constructor() {
+                this.username = '<%= user.username %>';
+                this.apiEndpoint = '/api/sci-api';
+                this.terminal = document.getElementById('gameTerminal');
+                this.input = document.getElementById('gameInput');
+                this.loadingIndicator = document.getElementById('loadingIndicator');
+                this.progressBar = document.getElementById('progressBar');
+                this.currentGenre = 'scifi'; // Default genre
+                
+                this.setupEventListeners();
+                this.input.focus(); // Focus on input for immediate typing
+                
+                // Automatically send 'look around' command to start the game
+                this.sendInitialCommand();
+            }
+            
+            setupEventListeners() {
+                this.input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+                
+                // Add terminal click handler for focus
+                this.terminal.addEventListener('click', () => {
+                    this.input.focus();
+                });
+                
+                // Add exit click handlers
+                document.querySelectorAll('[class*="exit-"]').forEach(exit => {
+                    exit.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('available')) {
+                            const direction = e.target.dataset.direction;
+                            this.input.value = `go ${direction}`;
+                            this.sendMessage();
+                        }
+                    });
+                });
+                
+                // Add restart game handler
+                document.getElementById('restartGameBtn').addEventListener('click', () => {
+                    this.restartGame();
+                });
+            }
+            
+            async sendMessage() {
+                const message = this.input.value.trim();
+                if (!message) return;
+                
+                this.input.value = '';
+                this.setLoading(true);
+                
+                // Add user message to terminal
+                this.addToTerminal(`> ${message}`, 'user-message');
+                
+                try {
+                    const response = await fetch(this.apiEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                        },
+                        body: JSON.stringify({
+                            input_text: message,
+                            mylocation: this.currentLocation || 'start'
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Add AI response to terminal
+                    this.addToTerminal(data.content, 'ai-message');
+                    
+                    // Update game stats
+                    if (data.data) {
+                        this.updateGameStats(data.data);
+                        // Update current genre for image generation
+                        if (data.data.Genre) {
+                            this.currentGenre = data.data.Genre.toLowerCase();
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    this.addToTerminal('Error: Could not connect to game server.', 'error-message');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+            
+            addToTerminal(message, className = '') {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('terminal-message');
+                if (className) messageDiv.classList.add(className);
+                messageDiv.innerHTML = message.replace(/\n/g, '<br>');
+                
+                // Insert before the terminal input
+                const terminalInput = document.querySelector('.terminal-input');
+                this.terminal.insertBefore(messageDiv, terminalInput);
+                
+                // Scroll to bottom
+                this.terminal.scrollTop = this.terminal.scrollHeight;
+                
+                // Re-focus input
+                this.input.focus();
+            }
+            
+            updateGameStats(data) {
+                const updates = {
+                    playerName: data.Name,
+                    playerClass: data.Class,
+                    playerRace: data.Race,
+                    playerLevel: data.Level,
+                    playerHealth: data.Health,
+                    playerXP: data.XP,
+                    playerAC: data.AC,
+                    playerGold: data.Gold,
+                    currentLocation: data.Location,
+                    currentWeather: data.Weather,
+                    currentTime: data.Time,
+                    currentDay: data.Day,
+                    currentQuest: data.Quest,
+                    playerInventory: data.Inventory
+                };
+                
+                Object.entries(updates).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element && value) {
+                        element.textContent = value;
+                        if (id === 'currentLocation') {
+                            this.currentLocation = value;
+                            this.loadLocationImage(value);
+                        }
+                    }
+                });
+                
+                // Update exits display
+                if (data.Exits) {
+                    console.log('Exits received from server:', data.Exits, 'Type:', typeof data.Exits);
+                    this.updateExits(data.Exits);
+                }
+            }
+            
+            updateExits(exitsData) {
+                console.log('updateExits called with data:', exitsData);
+                
+                // Clear all exits first
+                document.querySelectorAll('[class*="exit-"]').forEach(exit => {
+                    exit.classList.remove('available');
+                    exit.title = '';
+                });
+                
+                // Parse exits data (could be JSON string or plain text)
+                let exits = {};
+                try {
+                    if (typeof exitsData === 'string') {
+                        // Try to parse as JSON first
+                        if (exitsData.startsWith('{')) {
+                            // Object format like {"north": "Forest Path", "south": "Village"}
+                            exits = JSON.parse(exitsData);
+                        } else if (exitsData.startsWith('[')) {
+                            // Array format like ["north", "south", "east"]
+                            const exitArray = JSON.parse(exitsData);
+                            exitArray.forEach(direction => {
+                                exits[direction.toLowerCase()] = direction;
+                            });
+                        } else {
+                            // Parse as comma-separated list like "north, south, east"
+                            const exitList = exitsData.split(',').map(e => e.trim().toLowerCase());
+                            exitList.forEach(direction => {
+                                if (direction) {
+                                    // Map descriptive names to cardinal directions for legacy data
+                                    const descriptiveToCardinal = {
+                                        'narrow passage': 'west',
+                                        'shallow pool': 'east', 
+                                        'stone door': 'north',
+                                        'passage': 'west',
+                                        'pool': 'east',
+                                        'door': 'north',
+                                        'path': 'south'
+                                    };
+                                    
+                                    const mappedDirection = descriptiveToCardinal[direction] || direction;
+                                    exits[mappedDirection] = direction; // Keep original as title
+                                }
+                            });
+                        }
+                    } else if (Array.isArray(exitsData)) {
+                        // Direct array
+                        exitsData.forEach(direction => {
+                            exits[direction.toLowerCase()] = direction;
+                        });
+                    } else if (typeof exitsData === 'object') {
+                        exits = exitsData;
+                    }
+                } catch (error) {
+                    console.error('Error parsing exits:', error);
+                    // Fallback: treat as comma-separated string
+                    if (typeof exitsData === 'string') {
+                        const exitList = exitsData.split(',').map(e => e.trim().toLowerCase());
+                        exitList.forEach(direction => {
+                            if (direction) {
+                                exits[direction] = direction;
+                            }
+                        });
+                    }
+                }
+                
+                // Update available exits
+                Object.keys(exits).forEach(direction => {
+                    // Map common direction names to compass directions
+                    const directionMap = {
+                        'north': 'north', 'n': 'north',
+                        'south': 'south', 's': 'south', 
+                        'east': 'east', 'e': 'east',
+                        'west': 'west', 'w': 'west',
+                        'northeast': 'northeast', 'ne': 'northeast',
+                        'northwest': 'northwest', 'nw': 'northwest', 
+                        'southeast': 'southeast', 'se': 'southeast',
+                        'southwest': 'southwest', 'sw': 'southwest',
+                        'up': 'up', 'u': 'up',
+                        'down': 'down', 'd': 'down'
+                    };
+                    
+                    const mappedDirection = directionMap[direction.toLowerCase()] || direction.toLowerCase();
+                    const exitElement = document.getElementById(`exit-${mappedDirection}`);
+                    
+                    if (exitElement) {
+                        exitElement.classList.add('available');
+                        exitElement.title = `Go ${direction}${exits[direction] !== direction ? ` to ${exits[direction]}` : ''}`;
+                    } else {
+                        // For non-cardinal directions like "Back to the Path", try to infer the correct direction
+                        // This is a temporary fix until AI provides proper cardinal directions
+                        if (direction.toLowerCase().includes('back') || direction.toLowerCase().includes('return') || 
+                            direction.toLowerCase().includes('path') || direction.toLowerCase().includes('way')) {
+                            // Try to show this as an available exit on the compass
+                            // We'll default to showing it as the opposite of the most recent movement
+                            // For now, let's use east as the default return direction
+                            const returnElement = document.getElementById('exit-east');
+                            if (returnElement) {
+                                returnElement.classList.add('available');
+                                returnElement.title = `${direction}`;
+                            }
+                        }
+                    }
+                });
+            }
+            
+            async loadLocationImage(locationName) {
+                if (!locationName) return;
+                
+                try {
+                    // Check if we have an image for this location
+                    const response = await fetch('/api/location-image', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                        },
+                        body: JSON.stringify({
+                            location: locationName,
+                            description: this.getLocationDescription(),
+                            genre: this.currentGenre
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.imageUrl) {
+                            this.displayLocationImage(data.imageUrl);
+                        } else {
+                            this.showImagePlaceholder();
+                        }
+                    } else {
+                        this.showImagePlaceholder();
+                    }
+                } catch (error) {
+                    console.error('Error loading location image:', error);
+                    this.showImagePlaceholder();
+                }
+            }
+            
+            displayLocationImage(imageUrl) {
+                const imageContainer = document.getElementById('locationImage');
+                imageContainer.innerHTML = `<img src="${imageUrl}" alt="Location image" />`;
+            }
+            
+            showImagePlaceholder() {
+                const imageContainer = document.getElementById('locationImage');
+                imageContainer.innerHTML = '<div class="location-placeholder">No image available</div>';
+            }
+            
+            getLocationDescription() {
+                // Get the last AI response that might contain a description
+                const messages = this.terminal.querySelectorAll('.terminal-message.ai-message');
+                if (messages.length > 0) {
+                    const lastMessage = messages[messages.length - 1];
+                    return lastMessage.textContent.substring(0, 200); // First 200 chars for image generation
+                }
+                return '';
+            }
+            
+            async restartGame() {
+                if (!confirm('Are you sure you want to restart the game? This will delete all your progress and cannot be undone.')) {
+                    return;
+                }
+                
+                this.setLoading(true);
+                
+                try {
+                    const response = await fetch('/api/restart-game', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                        },
+                        body: JSON.stringify({
+                            gameType: 'scifi' // Restart only sci-fi game
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Clear the terminal but keep header and input
+                        this.terminal.innerHTML = `
+                            <div style="color: #00ffff; font-weight: bold; margin-bottom: 20px;">
+████████████████████████████████████████████████████████████████████████████████<br>
+                            SCI-FI ADVENTURE TERMINAL v2.0<br>
+████████████████████████████████████████████████████████████████████████████████<br>
+<br>
+STARSHIP SYSTEMS ONLINE. Welcome to your space adventure!<br>
+Enter commands to explore the cosmos...<br>
+<br>
+                            </div>
+                            <div class="loading" id="loadingIndicator" style="display: none;">
+                                <div style="color: #ffff00;">
+[PROCESSING] Generating response...
+                                </div>
+                            </div>
+                            <div class="terminal-input">
+                                <span class="terminal-prompt">></span>
+                                <input type="text" id="gameInput" placeholder="Enter command..." autocomplete="off">
+                            </div>
+                        `;
+                        
+                        // Reinitialize references
+                        this.input = document.getElementById('gameInput');
+                        this.loadingIndicator = document.getElementById('loadingIndicator');
+                        this.setupEventListeners();
+                        
+                        // Reset game stats
+                        this.resetGameStats();
+                        
+                        // Clear exits
+                        this.updateExits('');
+                        
+                        // Show success message
+                        this.addToTerminal(`Game restarted successfully! ${data.cleared.conversations} conversations, ${data.cleared.locations} locations, and ${data.cleared.images} images cleared.`, 'system-message');
+                        
+                        // Automatically start fresh adventure
+                        this.addToTerminal('[SYSTEM] Starting new space adventure...', 'system-message');
+                        setTimeout(() => {
+                            this.sendInitialCommand();
+                        }, 1000);
+                        
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('Restart game error:', error);
+                    this.addToTerminal('Error: Failed to restart game. Please try again.', 'error-message');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+            
+            resetGameStats() {
+                const statElements = [
+                    'playerName', 'playerClass', 'playerRace', 'playerLevel', 
+                    'playerHealth', 'playerXP', 'playerAC', 'playerGold',
+                    'currentLocation', 'currentWeather', 'currentTime', 'currentDay',
+                    'currentQuest', 'playerInventory'
+                ];
+                
+                statElements.forEach(id => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = '-';
+                    }
+                });
+                
+                // Reset location image
+                this.showImagePlaceholder();
+            }
+            
+            async sendInitialCommand() {
+                // Wait a short moment for the page to fully load
+                setTimeout(async () => {
+                    try {
+                        // Show loading state
+                        this.setLoading(true);
+                        
+                        // Add welcome message
+                        this.addToTerminal('[SYSTEM] Welcome to your space adventure! Initializing starship systems...', 'system-message');
+                        
+                        // Send initial 'look around' command
+                        const response = await fetch(this.apiEndpoint, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                            },
+                            body: JSON.stringify({
+                                input_text: 'look around',
+                                mylocation: 'start'
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        // Add AI response to terminal
+                        this.addToTerminal(data.content, 'ai-message');
+                        
+                        // Update game stats if available
+                        if (data.data) {
+                            this.updateGameStats(data.data);
+                            if (data.data.Genre) {
+                                this.currentGenre = data.data.Genre.toLowerCase();
+                            }
+                        }
+                        
+                    } catch (error) {
+                        console.error('Initial command error:', error);
+                        this.addToTerminal('[SYSTEM] Welcome to your space adventure! Type "look around" to begin exploring the cosmos.', 'system-message');
+                    } finally {
+                        // Hide loading state
+                        this.setLoading(false);
+                    }
+                }, 1000); // 1 second delay to ensure everything is loaded
+            }
+            
+            setLoading(loading) {
+                if (loading) {
+                    this.loadingIndicator.style.display = 'block';
+                    this.input.disabled = true;
+                    this.input.placeholder = 'Processing...';
+                    this.progressBar.style.width = '100%';
+                } else {
+                    this.loadingIndicator.style.display = 'none';
+                    this.input.disabled = false;
+                    this.input.placeholder = 'Enter command...';
+                    this.progressBar.style.width = '0%';
+                    this.input.focus();
+                }
+            }
+        }
+        
+        // Initialize game client when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new GameClient();
+        });
+    </script>
+</body>
+</html>
