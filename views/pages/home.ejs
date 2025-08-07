@@ -481,131 +481,6 @@
             50% { border-color: #00ff41; }
         }
         
-        /* Popup Window Styles */
-        .popup-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 10000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .popup-window {
-            background: #c0c0c0;
-            border: 2px outset #c0c0c0;
-            box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.5);
-            font-family: 'MS Sans Serif', sans-serif;
-            font-size: 11px;
-            min-width: 300px;
-            max-width: 400px;
-        }
-        
-        .popup-titlebar {
-            background: linear-gradient(90deg, #0054e3, #0078d4);
-            color: white;
-            padding: 3px 6px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-        }
-        
-        .popup-close {
-            background: #c0c0c0;
-            border: 1px outset #c0c0c0;
-            width: 16px;
-            height: 14px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            line-height: 1;
-        }
-        
-        .popup-close:hover {
-            background: #e0e0e0;
-        }
-        
-        .popup-close:active {
-            border: 1px inset #c0c0c0;
-        }
-        
-        .popup-content {
-            padding: 15px;
-            background: #c0c0c0;
-        }
-        
-        .popup-message {
-            color: #000;
-            margin-bottom: 15px;
-            font-size: 11px;
-            font-family: 'MS Sans Serif', sans-serif;
-        }
-        
-        .popup-form {
-            margin: 10px 0;
-        }
-        
-        .popup-label {
-            display: block;
-            color: #000;
-            font-size: 11px;
-            margin-bottom: 3px;
-            font-family: 'MS Sans Serif', sans-serif;
-        }
-        
-        .popup-input {
-            width: 100%;
-            padding: 2px 4px;
-            border: 1px inset #c0c0c0;
-            background: white;
-            color: #000;
-            font-size: 11px;
-            font-family: 'MS Sans Serif', sans-serif;
-            margin-bottom: 8px;
-        }
-        
-        .popup-input:focus {
-            outline: 1px dotted #000;
-            outline-offset: -1px;
-        }
-        
-        .popup-buttons {
-            text-align: center;
-            margin-top: 15px;
-        }
-        
-        .popup-button {
-            background: #c0c0c0;
-            border: 1px outset #c0c0c0;
-            padding: 2px 16px;
-            margin: 0 5px;
-            font-size: 11px;
-            font-family: 'MS Sans Serif', sans-serif;
-            cursor: pointer;
-            min-width: 75px;
-        }
-        
-        .popup-button:hover {
-            background: #e0e0e0;
-        }
-        
-        .popup-button:active {
-            border: 1px inset #c0c0c0;
-        }
-        
-        .popup-button-primary {
-            font-weight: bold;
-        }
         
         /* Clickable cards for non-logged-in users */
         .clickable-card {
@@ -653,13 +528,6 @@
                 </div>
                 <div class="nav-item">
                     <a class="nav-link" href="/auth/logout">[LOGOUT]</a>
-                </div>
-                <% } else { %>
-                <div class="nav-item">
-                    <a class="nav-link" href="#" id="loginBtn">[LOGIN]</a>
-                </div>
-                <div class="nav-item">
-                    <a class="nav-link" href="#" id="registerBtn">[REGISTER]</a>
                 </div>
                 <% } %>
             </div>
@@ -809,18 +677,6 @@
     </div>
     <% } %>
 
-    <!-- Custom Popup Windows -->
-    <div id="popupOverlay" class="popup-overlay" style="display: none;">
-        <div id="popupWindow" class="popup-window">
-            <div class="popup-titlebar">
-                <span id="popupTitle">System Dialog</span>
-                <button class="popup-close" id="popupCloseBtn">×</button>
-            </div>
-            <div id="popupContent" class="popup-content">
-                <!-- Content will be inserted here -->
-            </div>
-        </div>
-    </div>
 
     <!-- Bootstrap JS removed due to CSP restrictions -->
     
@@ -869,150 +725,17 @@
             canvas.height = window.innerHeight;
         });
         
-        // Popup window functions
-        function showPopup(title, content) {
-            document.getElementById('popupTitle').textContent = title;
-            document.getElementById('popupContent').innerHTML = content;
-            document.getElementById('popupOverlay').style.display = 'flex';
-        }
-        
-        function closePopup() {
-            document.getElementById('popupOverlay').style.display = 'none';
-        }
-        
-        function showLoginPopup(storyMode = null, storyTitle = null) {
-            let message = 'Please enter your login credentials:';
-            let redirectUrl = '/auth/login';
-            
-            if (storyMode && storyTitle) {
-                message = `Login required to access ${storyTitle}!`;
-                redirectUrl = `/auth/login?redirect=/${storyMode}`;
-            }
-            
-            const content = `
-                <div class="popup-message">${message}</div>
-                <form action="${redirectUrl}" method="POST" class="popup-form">
-                    <label class="popup-label">Username:</label>
-                    <input type="text" name="username" class="popup-input" required autocomplete="username">
-                    
-                    <label class="popup-label">Password:</label>
-                    <input type="password" name="password" class="popup-input" required autocomplete="current-password">
-                    
-                    <div class="popup-buttons">
-                        <button type="submit" class="popup-button popup-button-primary">Login & Play</button>
-                        <button type="button" class="popup-button popup-cancel">Cancel</button>
-                    </div>
-                </form>
-                <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #666;">
-                    Don't have an account? <a href="#" id="switchToRegister" style="color: #000; text-decoration: underline;">Create one here</a>
-                </div>
-            `;
-            showPopup('Login Required', content);
-            
-            // Add event listener for the register link
-            setTimeout(() => {
-                const switchLink = document.getElementById('switchToRegister');
-                if (switchLink) {
-                    switchLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        showRegisterPopup(storyMode, storyTitle);
-                    });
-                }
-            }, 100);
-        }
-        
-        function showRegisterPopup(storyMode = null, storyTitle = null) {
-            let message = 'Create a new account:';
-            let redirectUrl = '/auth/register';
-            
-            if (storyMode && storyTitle) {
-                message = `Create an account to access ${storyTitle}!`;
-                redirectUrl = `/auth/register?redirect=/${storyMode}`;
-            }
-            
-            const content = `
-                <div class="popup-message">${message}</div>
-                <form action="${redirectUrl}" method="POST" class="popup-form">
-                    <label class="popup-label">Username:</label>
-                    <input type="text" name="username" class="popup-input" required autocomplete="username">
-                    
-                    <label class="popup-label">Password:</label>
-                    <input type="password" name="password" class="popup-input" required autocomplete="new-password">
-                    
-                    <label class="popup-label">Confirm Password:</label>
-                    <input type="password" name="confirmPassword" class="popup-input" required autocomplete="new-password">
-                    
-                    <div class="popup-buttons">
-                        <button type="submit" class="popup-button popup-button-primary">Register & Play</button>
-                        <button type="button" class="popup-button popup-cancel">Cancel</button>
-                    </div>
-                </form>
-                <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #666;">
-                    Already have an account? <a href="#" id="switchToLogin" style="color: #000; text-decoration: underline;">Login here</a>
-                </div>
-            `;
-            showPopup('Create Account', content);
-            
-            // Add event listener for the login link
-            setTimeout(() => {
-                const switchLink = document.getElementById('switchToLogin');
-                if (switchLink) {
-                    switchLink.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        showLoginPopup(storyMode, storyTitle);
-                    });
-                }
-            }, 100);
-        }
-        
-        // Close popup when clicking overlay
-        document.addEventListener('click', function(e) {
-            if (e.target.id === 'popupOverlay') {
-                closePopup();
-            }
-        });
-        
-        // Close popup with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closePopup();
-            }
-        });
         
         // Add event listeners when DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            // Login button
-            const loginBtn = document.getElementById('loginBtn');
-            if (loginBtn) {
-                loginBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    showLoginPopup();
-                });
-            }
-            
-            // Register button  
-            const registerBtn = document.getElementById('registerBtn');
-            if (registerBtn) {
-                registerBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    showRegisterPopup();
-                });
-            }
-            
-            // Close button in popup (will be added dynamically)
-            document.addEventListener('click', function(e) {
-                if (e.target.id === 'popupCloseBtn' || e.target.classList.contains('popup-cancel')) {
-                    closePopup();
-                }
-            });
-            
             // Adventure card clicks for non-logged-in users
             const clickableCards = document.querySelectorAll('.clickable-card');
             clickableCards.forEach(card => {
                 card.addEventListener('click', function() {
                     const storyMode = this.dataset.mode;
-                    const storyTitle = this.dataset.title;
-                    showLoginPopup(storyMode, storyTitle);
+                    // Directly redirect to the game mode, which will trigger requireLogin middleware
+                    // This stores the intended destination and redirects to login
+                    window.location.href = `/${storyMode}`;
                 });
             });
         });

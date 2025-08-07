@@ -6,6 +6,21 @@ const { redirectIfAuthenticated, loadUser } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Helper function to generate redirect message
+function getRedirectMessage(session) {
+  if (!session.redirectAfterLogin) return null;
+  
+  const gameRoutes = {
+    '/adventure': 'Fantasy Adventure',
+    '/scifi': 'Sci-Fi Adventure', 
+    '/mystery': 'Mystery Investigation',
+    '/custom': 'Custom Universe'
+  };
+  
+  const gameName = gameRoutes[session.redirectAfterLogin];
+  return gameName ? `You'll be taken to ${gameName} after login.` : null;
+}
+
 // Apply loadUser middleware to all routes
 router.use(loadUser);
 
@@ -13,7 +28,8 @@ router.use(loadUser);
 router.get('/login', redirectIfAuthenticated, (req, res) => {
   res.render('auth/login', { 
     title: 'Login',
-    error: null 
+    error: null,
+    redirectMessage: getRedirectMessage(req.session)
   });
 });
 
@@ -27,7 +43,8 @@ router.post('/login', [
     if (!errors.isEmpty()) {
       return res.render('auth/login', {
         title: 'Login',
-        error: errors.array()[0].msg
+        error: errors.array()[0].msg,
+        redirectMessage: getRedirectMessage(req.session)
       });
     }
 
@@ -46,7 +63,8 @@ router.post('/login', [
     if (!user || !user.isActive) {
       return res.render('auth/login', {
         title: 'Login',
-        error: 'Invalid credentials'
+        error: 'Invalid credentials',
+        redirectMessage: getRedirectMessage(req.session)
       });
     }
 
@@ -54,7 +72,8 @@ router.post('/login', [
     if (!isValidPassword) {
       return res.render('auth/login', {
         title: 'Login',
-        error: 'Invalid credentials'
+        error: 'Invalid credentials',
+        redirectMessage: getRedirectMessage(req.session)
       });
     }
 
@@ -65,12 +84,16 @@ router.post('/login', [
     // Set session
     req.session.userId = user.id;
 
-    res.redirect('/');
+    // Check for stored redirect URL and use it, otherwise go to home
+    const redirectUrl = req.session.redirectAfterLogin || '/';
+    delete req.session.redirectAfterLogin; // Clean up the stored URL
+    
+    res.redirect(redirectUrl);
   } catch (error) {
-    console.error('Login error:', error);
     res.render('auth/login', {
       title: 'Login',
-      error: 'An error occurred during login'
+      error: 'An error occurred during login',
+      redirectMessage: getRedirectMessage(req.session)
     });
   }
 });
@@ -79,7 +102,8 @@ router.post('/login', [
 router.get('/register', redirectIfAuthenticated, (req, res) => {
   res.render('auth/register', { 
     title: 'Register',
-    error: null 
+    error: null,
+    redirectMessage: getRedirectMessage(req.session)
   });
 });
 
@@ -106,7 +130,8 @@ router.post('/register', [
     if (!errors.isEmpty()) {
       return res.render('auth/register', {
         title: 'Register',
-        error: errors.array()[0].msg
+        error: errors.array()[0].msg,
+        redirectMessage: getRedirectMessage(req.session)
       });
     }
 
@@ -125,7 +150,8 @@ router.post('/register', [
     if (existingUser) {
       return res.render('auth/register', {
         title: 'Register',
-        error: 'Username or email already exists'
+        error: 'Username or email already exists',
+        redirectMessage: getRedirectMessage(req.session)
       });
     }
 
@@ -141,12 +167,16 @@ router.post('/register', [
     // Set session
     req.session.userId = user.id;
 
-    res.redirect('/');
+    // Check for stored redirect URL and use it, otherwise go to home
+    const redirectUrl = req.session.redirectAfterLogin || '/';
+    delete req.session.redirectAfterLogin; // Clean up the stored URL
+    
+    res.redirect(redirectUrl);
   } catch (error) {
-    console.error('Registration error:', error);
     res.render('auth/register', {
       title: 'Register',
-      error: 'An error occurred during registration'
+      error: 'An error occurred during registration',
+      redirectMessage: getRedirectMessage(req.session)
     });
   }
 });
@@ -191,7 +221,6 @@ router.post('/api-token', async (req, res) => {
 
     res.json({ token });
   } catch (error) {
-    console.error('API token error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -199,9 +228,6 @@ router.post('/api-token', async (req, res) => {
 // Logout
 router.post('/logout', (req, res) => {
   req.session.destroy((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-    }
     res.redirect('/');
   });
 });
@@ -209,9 +235,6 @@ router.post('/logout', (req, res) => {
 // Logout GET (for convenience)
 router.get('/logout', (req, res) => {
   req.session.destroy((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-    }
     res.redirect('/');
   });
 });

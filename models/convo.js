@@ -20,116 +20,144 @@ module.exports = (sequelize, DataTypes) => {
     },
     name: {
       type: DataTypes.STRING(100),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     playerClass: {
       type: DataTypes.STRING(100),
-      allowNull: true,
+      allowNull: false,
+      defaultValue: '',
       field: 'player_class'
     },
     race: {
       type: DataTypes.STRING(100),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     temp: {
       type: DataTypes.STRING(100),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     contentUser: {
       type: DataTypes.TEXT,
-      allowNull: true,
+      allowNull: false,
+      defaultValue: '',
       field: 'content_user'
     },
     contentAssistant: {
       type: DataTypes.TEXT,
-      allowNull: true,
+      allowNull: false,
+      defaultValue: '',
       field: 'content_assistant'
     },
     turn: {
       type: DataTypes.STRING(6),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     timePeriod: {
       type: DataTypes.STRING(50),
-      allowNull: true,
+      allowNull: false,
+      defaultValue: '',
       field: 'time_period'
     },
     dayNumber: {
       type: DataTypes.STRING(6),
-      allowNull: true,
+      allowNull: false,
+      defaultValue: '',
       field: 'day_number'
     },
     weather: {
       type: DataTypes.STRING(50),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     health: {
       type: DataTypes.STRING(4),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     xp: {
       type: DataTypes.STRING(10),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     ac: {
       type: DataTypes.STRING(10),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     level: {
       type: DataTypes.STRING(10),
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     description: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     quest: {
-      type: DataTypes.STRING(100),
-      allowNull: true
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: ''
     },
     location: {
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    exits: {
-      type: DataTypes.TEXT,
-      allowNull: true
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: ''
     },
     inventory: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     action: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     summary: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     genre: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     query: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     gender: {
-      type: DataTypes.STRING(100),
-      allowNull: true
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: ''
     },
     registered: {
-      type: DataTypes.STRING(100),
-      allowNull: true
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: ''
     },
     stats: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false,
+      defaultValue: ''
     },
     gold: {
-      type: DataTypes.STRING(100),
-      allowNull: true
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: ''
+    },
+    conversation: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: '',
+      comment: 'Raw OpenAI response content for debugging and analysis'
     }
   }, {
     tableName: 'convos',
@@ -147,13 +175,7 @@ module.exports = (sequelize, DataTypes) => {
     ]
   });
 
-  Convo.associate = function(models) {
-    Convo.belongsTo(models.User, {
-      foreignKey: 'player',
-      targetKey: 'username',
-      as: 'user'
-    });
-  };
+  // Removed associations - no foreign key constraints needed
 
   return Convo;
 };

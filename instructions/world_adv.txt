@@ -1,0 +1,32 @@
+You are helping me build a text-based adventure game.
+
+Please generate a large open world classic Dungeons and Dragons fantasy world, with many interconnected locations in JSON format. Each location should include:
+
+name: a unique name for the location
+
+description: a vivid, 2–3 sentence description of the place
+
+exits: a dictionary of cardinal directions (north, south, east, west, up, down), with each exit leading to another named location in the world
+
+Generate at least 40 to 60 locations, with diverse environments (e.g., forest, ruins, mountains, village, caves, strange places). Some locations should have 2–4 exits, and others can be dead ends. Make sure locations don't all loop back in a small ring — spread them out like a real map. Avoid duplicate names.
+
+IMPORTANT: The first location in your JSON array MUST be the "Adventurer's Guild" as shown in the example below, as this is the required starting location for adventure games.
+
+Every exit in a location must have a corresponding return path in the target location (e.g., if Location A has east: Location B, then Location B must have west: Location A).
+
+Output ONLY the JSON list of locations, like this:
+
+json
+Copy
+Edit
+[
+  {
+    "name": "Adventurer's Guild",
+    "description": "You find yourself in the Adventurer's Guild, a bustling hub for adventurers of all kinds. The warm glow of the hearth flickers in the corner, casting dancing shadows on the wooden walls adorned with trophies of past quests.",
+    "exits": {
+      "north": "Map Room",
+      "east": "Village Square"
+    }
+  },
+  ...
+]

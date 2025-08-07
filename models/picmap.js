@@ -6,7 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       autoIncrement: true
     },
     player: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(50),
       allowNull: false,
       validate: {
         notNull: { msg: 'Player is required' },
@@ -14,15 +14,24 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     location: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(50),
       allowNull: false,
       validate: {
         notNull: { msg: 'Location is required' },
         notEmpty: { msg: 'Location cannot be empty' }
       }
     },
+    genre: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'fantasy D&D',
+      validate: {
+        notNull: { msg: 'Genre is required' },
+        notEmpty: { msg: 'Genre cannot be empty' }
+      }
+    },
     picfile: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.STRING(50),
       allowNull: false,
       validate: {
         notNull: { msg: 'Picture file is required' },
@@ -39,7 +48,7 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: false,
     indexes: [
       {
-        fields: ['player', 'location']
+        fields: ['player', 'location', 'genre']
       },
       {
         fields: ['created_at']
@@ -47,13 +56,7 @@ module.exports = (sequelize, DataTypes) => {
     ]
   });
 
-  Picmap.associate = function(models) {
-    Picmap.belongsTo(models.User, {
-      foreignKey: 'player',
-      targetKey: 'username',
-      as: 'user'
-    });
-  };
+  // Removed associations - no foreign key constraints needed
 
   return Picmap;
 };

@@ -4,70 +4,384 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %> - GPT Adventure</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            color: #00ff41;
+            font-family: 'Courier New', 'Lucida Console', monospace;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Matrix rain effect */
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.1;
+        }
+        
+        /* Register container */
+        .register-container {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff41;
+            border-radius: 10px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 500px;
+            margin: 1rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 255, 65, 0.3);
+        }
+        
+        .register-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .register-container:hover::before {
+            left: 100%;
+        }
+        
+        /* Header */
+        .register-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .register-title {
+            font-family: 'Arial Black', 'Helvetica Bold', sans-serif;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: #00ff41;
+            font-size: 1.5rem;
+            letter-spacing: 0.1em;
+            margin: 0;
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+        }
+        
+        .register-subtitle {
+            color: #00ffff;
+            font-size: 0.9rem;
+            margin: 0.5rem 0 0 0;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* Alerts */
+        .alert {
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        
+        .alert-danger {
+            background: rgba(255, 0, 65, 0.1);
+            border: 1px solid #ff0041;
+            color: #ff4466;
+        }
+        
+        /* Form styling */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-label {
+            display: block;
+            color: #00ff41;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ff41;
+            border-radius: 5px;
+            color: #00ff41;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control::placeholder {
+            color: rgba(0, 255, 65, 0.5);
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #00ffff;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.8);
+        }
+        
+        /* Form text */
+        .form-text {
+            font-size: 0.8rem;
+            color: rgba(0, 255, 255, 0.6);
+            margin-top: 0.25rem;
+        }
+        
+        /* Button styling */
+        .btn-terminal {
+            width: 100%;
+            background: transparent;
+            color: #00ff41;
+            border: 2px solid #00ff41;
+            padding: 0.8rem 2rem;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            margin: 1rem 0;
+        }
+        
+        .btn-terminal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 255, 65, 0.1);
+            transition: left 0.3s ease;
+        }
+        
+        .btn-terminal:hover::before {
+            left: 0;
+        }
+        
+        .btn-terminal:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 255, 65, 0.3);
+            text-shadow: 0 0 10px #00ff41;
+        }
+        
+        .btn-terminal:active {
+            transform: translateY(0);
+        }
+        
+        /* Links */
+        .auth-links {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(0, 255, 65, 0.2);
+        }
+        
+        .auth-links p {
+            color: #cccccc;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        .auth-links a {
+            color: #00ffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .auth-links a:hover {
+            color: #00ff41;
+            text-shadow: 0 0 5px rgba(0, 255, 65, 0.5);
+        }
+        
+        /* Back to home link */
+        .back-home {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            color: #00ffff;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        
+        .back-home:hover {
+            color: #00ff41;
+            text-shadow: 0 0 5px rgba(0, 255, 65, 0.5);
+        }
+        
+        /* Two column layout for optional fields */
+        .form-row {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .form-col {
+            flex: 1;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .register-container {
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+            
+            .register-title {
+                font-size: 1.2rem;
+            }
+            
+            .back-home {
+                position: static;
+                display: block;
+                text-align: center;
+                margin-bottom: 1rem;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+        }
+    </style>
 </head>
-<body class="bg-light">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-4">
-                <div class="card mt-5">
-                    <div class="card-header">
-                        <h3 class="text-center">Register for GPT Adventure</h3>
+<body>
+    <!-- Matrix background effect -->
+    <canvas class="matrix-bg" id="matrix"></canvas>
+    
+    <!-- Back to home link -->
+    <a href="/" class="back-home">&larr; Back to Adventure Selection</a>
+    
+    <div class="register-container">
+        <div class="register-header">
+            <h1 class="register-title">Create Account</h1>
+            <p class="register-subtitle">Initialize User Profile</p>
+        </div>
+        
+        <% if (error) { %>
+        <div class="alert alert-danger">
+            ⚠️ <%= error %>
+        </div>
+        <% } %>
+        
+        <% if (redirectMessage) { %>
+        <div class="alert alert-info" style="background: rgba(0, 255, 255, 0.1); border: 1px solid #00ffff; color: #00ffff;">
+            🎯 <%= redirectMessage %>
+        </div>
+        <% } %>
+        
+        <form action="/auth/register" method="POST">
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" class="form-control" id="username" name="username" required placeholder="Enter your username">
+                <div class="form-text">Letters, numbers, and underscores only</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="email" class="form-label">Email Address</label>
+                <input type="email" class="form-control" id="email" name="email" required placeholder="Enter your email">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-col">
+                    <div class="form-group">
+                        <label for="firstName" class="form-label">First Name</label>
+                        <input type="text" class="form-control" id="firstName" name="firstName" placeholder="Optional">
                     </div>
-                    <div class="card-body">
-                        <% if (error) { %>
-                        <div class="alert alert-danger" role="alert">
-                            <%= error %>
-                        </div>
-                        <% } %>
-                        
-                        <form action="/auth/register" method="POST">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username" required>
-                                <div class="form-text">Letters, numbers, and underscores only.</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" name="email" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="firstName" class="form-label">First Name (Optional)</label>
-                                <input type="text" class="form-control" id="firstName" name="firstName">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="lastName" class="form-label">Last Name (Optional)</label>
-                                <input type="text" class="form-control" id="lastName" name="lastName">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
-                                <input type="password" class="form-control" id="password" name="password" required>
-                                <div class="form-text">Minimum 8 characters.</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="confirmPassword" class="form-label">Confirm Password</label>
-                                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
-                            </div>
-                            
-                            <div class="d-grid">
-                                <button type="submit" class="btn btn-primary">Register</button>
-                            </div>
-                        </form>
-                        
-                        <div class="text-center mt-3">
-                            <p>Already have an account? <a href="/auth/login">Login here</a></p>
-                        </div>
+                </div>
+                <div class="form-col">
+                    <div class="form-group">
+                        <label for="lastName" class="form-label">Last Name</label>
+                        <input type="text" class="form-control" id="lastName" name="lastName" placeholder="Optional">
                     </div>
                 </div>
             </div>
+            
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="password" name="password" required placeholder="Minimum 8 characters">
+                <div class="form-text">Must be at least 8 characters long</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="confirmPassword" class="form-label">Confirm Password</label>
+                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required placeholder="Re-enter your password">
+            </div>
+            
+            <button type="submit" class="btn-terminal">Create Account</button>
+        </form>
+        
+        <div class="auth-links">
+            <p>Already have access credentials? <a href="/auth/login">Login Here</a></p>
         </div>
     </div>
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Matrix rain effect -->
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const matrix = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()*&^%+-/~{[|`]}";
+        const matrixArray = matrix.split("");
+
+        const font_size = 10;
+        const columns = canvas.width / font_size;
+
+        const drops = [];
+        for(let x = 0; x < columns; x++) {
+            drops[x] = 1;
+        }
+
+        function draw() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff41';
+            ctx.font = font_size + 'px arial';
+
+            for(let i = 0; i < drops.length; i++) {
+                const text = matrixArray[Math.floor(Math.random() * matrixArray.length)];
+                ctx.fillText(text, i * font_size, drops[i] * font_size);
+
+                if(drops[i] * font_size > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(draw, 35);
+
+        // Resize canvas on window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        // Focus on username field when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('username').focus();
+        });
+    </script>
 </body>
 </html>

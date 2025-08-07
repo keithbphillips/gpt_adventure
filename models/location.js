@@ -5,22 +5,6 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true
     },
-    player: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'Player is required' },
-        notEmpty: { msg: 'Player cannot be empty' }
-      }
-    },
-    genre: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      validate: {
-        notNull: { msg: 'Genre is required' },
-        notEmpty: { msg: 'Genre cannot be empty' }
-      }
-    },
     name: {
       type: DataTypes.STRING(100),
       allowNull: false,
@@ -31,76 +15,64 @@ module.exports = (sequelize, DataTypes) => {
     },
     description: {
       type: DataTypes.TEXT,
-      allowNull: true
-    },
-    shortDescription: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      field: 'short_description'
+      allowNull: false,
+      defaultValue: '',
+      validate: {
+        notNull: { msg: 'Description is required' }
+      }
     },
     exits: {
       type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'JSON string containing available exits like {"north": "Forest Path", "south": "Village Square"}'
-    },
-    visited: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-      allowNull: false
-    },
-    visitCount: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
       allowNull: false,
-      field: 'visit_count'
+      defaultValue: '{}',
+      comment: 'JSON string of exits: {"north": "Location Name", "south": "Other Location"}'
     },
-    lastVisited: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      field: 'last_visited'
+    player: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: {
+        notNull: { msg: 'Player is required' },
+        notEmpty: { msg: 'Player cannot be empty' }
+      }
+    },
+    genre: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'fantasy D&D',
+      validate: {
+        notNull: { msg: 'Genre is required' },
+        notEmpty: { msg: 'Genre cannot be empty' }
+      }
     },
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
-      field: 'created_at'
+      allowNull: false
     },
     updatedAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
-      field: 'updated_at'
+      allowNull: false
     }
   }, {
     tableName: 'locations',
     timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
     indexes: [
-      {
-        fields: ['player', 'genre', 'name'],
-        unique: true
-      },
       {
         fields: ['player', 'genre']
       },
       {
-        fields: ['last_visited']
+        fields: ['name', 'player', 'genre'],
+        unique: true
+      },
+      {
+        fields: ['player']
+      },
+      {
+        fields: ['genre']
       }
     ]
   });
-
-  Location.associate = function(models) {
-    Location.belongsTo(models.User, {
-      foreignKey: 'player',
-      targetKey: 'username',
-      as: 'user'
-    });
-    
-    Location.hasMany(models.Picmap, {
-      foreignKey: 'location',
-      sourceKey: 'name',
-      as: 'pictures'
-    });
-  };
 
   return Location;
 };

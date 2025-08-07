@@ -4,7 +4,7 @@ module.exports = {
   development: {
     dialect: 'sqlite',
     storage: './database.sqlite',
-    logging: console.log,
+    logging: false,
     pool: {
       max: 5,
       min: 0,

@@ -93,7 +93,6 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
   
   if (process.env.NODE_ENV === 'development') {
     res.status(err.status || 500).json({
@@ -111,42 +110,32 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
   try {
     await db.sequelize.authenticate();
-    console.log('Database connection has been established successfully.');
     
     // Skip auto-sync for now to avoid database recreation
     // await db.sequelize.sync({ alter: false });
-    console.log('Database connection ready.');
     
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {
-    console.error('Unable to connect to the database:', error);
     process.exit(1);
   }
 };
 
 // Global error handlers
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  console.error('Stack:', error.stack);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
   await db.sequelize.close();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
   await db.sequelize.close();
   process.exit(0);
 });

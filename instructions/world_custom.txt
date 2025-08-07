@@ -1,0 +1,30 @@
+You are helping me build a text-based adventure game.
+
+Please generate a large open world {world_description}, with many interconnected locations in JSON format. Each location should include:
+
+name: a unique name for the location
+
+description: a vivid, 2–3 sentence description of the place
+
+exits: a dictionary of cardinal directions (north, south, east, west, up, down), with each exit leading to another named location in the world
+
+Generate at least 40 to 60 locations, with diverse environments that are appropriete for this world. Some locations should have 2–4 exits, and others can be dead ends. Make sure locations don’t all loop back in a small ring — spread them out like a real map. Avoid duplicate names.
+
+IMPORTANT: The first location in your JSON array MUST be the "{start_location}" as shown in the example below, as this is the required starting location for custom games.
+
+Output ONLY the JSON list of locations, like this:
+
+json
+Copy
+Edit
+[
+  {
+    "name": "start_location",
+    "description": "start_location_description",
+    "exits": {
+      "north": "somewhere north",
+      "east": "somewhere south"
+    }
+  },
+  ...
+]

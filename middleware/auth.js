@@ -18,7 +18,6 @@ const authenticateUser = async (req, res, next) => {
           return next();
         }
       } catch (jwtError) {
-        console.error('JWT verification error:', jwtError);
       }
     }
 
@@ -33,7 +32,6 @@ const authenticateUser = async (req, res, next) => {
 
     return res.status(401).json({ error: 'Authentication required' });
   } catch (error) {
-    console.error('Authentication error:', error);
     return res.status(500).json({ error: 'Authentication server error' });
   }
 };
@@ -58,7 +56,6 @@ const authenticateToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('Token verification error:', error);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
 };
@@ -69,6 +66,8 @@ const requireLogin = (req, res, next) => {
     if (req.xhr || req.headers.accept.indexOf('json') > -1) {
       return res.status(401).json({ error: 'Authentication required' });
     }
+    // Store the intended destination before redirecting to login
+    req.session.redirectAfterLogin = req.originalUrl || req.url;
     return res.redirect('/auth/login');
   }
   next();
@@ -86,7 +85,6 @@ const loadUser = async (req, res, next) => {
         req.session.destroy();
       }
     } catch (error) {
-      console.error('Error loading user:', error);
     }
   }
   next();

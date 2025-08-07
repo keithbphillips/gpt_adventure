@@ -8,6 +8,138 @@ const { Op } = require('sequelize');
 
 const router = express.Router();
 
+// Function to generate and populate world locations
+async function generateWorldLocations(username, genre = 'fantasy D&D', customWorldData = null) {
+  try {
+    console.log('\n🌍 ===== GENERATING WORLD LOCATIONS =====');
+    console.log(`Player: ${username}, Genre: ${genre}`);
+
+    // Check if world already exists for this player/genre
+    const existingLocations = await Location.count({
+      where: { player: username, genre: genre }
+    });
+
+    if (existingLocations > 0) {
+      console.log(`🌍 World already exists (${existingLocations} locations), skipping generation`);
+      return existingLocations;
+    }
+
+    // Validate required parameters
+    if (!username || !genre) {
+      throw new Error(`Missing required parameters: username=${username}, genre=${genre}`);
+    }
+
+    // Map genre to game type
+    const genreToGameType = {
+      'fantasy D&D': 'adventure',
+      'Science Fiction': 'scifi', 
+      'Mystery': 'mystery',
+      'Custom': 'custom'
+    };
+    
+    const gameType = genreToGameType[genre] || 'adventure';
+    console.log(`🎮 Game type: ${gameType}`);
+
+    // Generate world using OpenAI with appropriate game type
+    const worldData = await openaiService.generateWorld(username, gameType, customWorldData);
+    
+    // Parse JSON response
+    console.log('🔧 Parsing world JSON data...');
+    console.log('Raw world data length:', worldData.length);
+    console.log('Raw world data preview:', worldData.substring(0, 500));
+    
+    let locations;
+    try {
+      // Clean up the response - remove any markdown formatting
+      let cleanedData = worldData;
+      console.log('🔧 Original data starts with:', cleanedData.substring(0, 50));
+      
+      if (cleanedData.includes('```json')) {
+        cleanedData = cleanedData.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        console.log('🔧 Removed markdown formatting');
+      }
+      if (cleanedData.includes('json\n')) {
+        cleanedData = cleanedData.replace(/json\n/g, '');
+        console.log('🔧 Removed json label');
+      }
+      
+      console.log('🔧 Cleaned data starts with:', cleanedData.substring(0, 50));
+      console.log('🔧 Attempting JSON.parse...');
+      
+      // Try to repair common JSON issues
+      let jsonToTry = cleanedData.trim();
+      
+      // If JSON appears truncated (doesn't end with ]), try to fix it
+      if (jsonToTry.startsWith('[') && !jsonToTry.endsWith(']')) {
+        console.log('🔧 JSON appears truncated, attempting to repair...');
+        // Find the last complete object
+        let lastCompleteIndex = jsonToTry.lastIndexOf('}');
+        if (lastCompleteIndex > 0) {
+          jsonToTry = jsonToTry.substring(0, lastCompleteIndex + 1) + ']';
+          console.log('🔧 Repaired JSON ending');
+        }
+      }
+      
+      locations = JSON.parse(jsonToTry);
+      console.log('✅ Successfully parsed JSON');
+    } catch (parseError) {
+      console.error('❌ Failed to parse world JSON:', parseError);
+      console.error('❌ Cleaned data that failed:', cleanedData.substring(0, 1000));
+      throw new Error(`Failed to parse world generation response: ${parseError.message}`);
+    }
+
+    if (!Array.isArray(locations)) {
+      throw new Error('World generation did not return an array of locations');
+    }
+
+    console.log(`🔧 Successfully parsed ${locations.length} locations`);
+
+    // Insert locations into database
+    console.log('💾 Inserting locations into database...');
+    console.log('💾 Sample location data:', JSON.stringify(locations[0], null, 2));
+    
+    const locationRecords = locations.map((location, index) => {
+      if (!location.name || !location.description) {
+        console.warn(`⚠️ Location ${index} missing required fields:`, location);
+      }
+      return {
+        name: location.name || `Unknown Location ${index}`,
+        description: location.description || 'No description available.',
+        exits: JSON.stringify(location.exits || {}),
+        player: username,
+        genre: genre
+      };
+    });
+
+    console.log('💾 Created', locationRecords.length, 'location records');
+    console.log('💾 Sample record:', JSON.stringify(locationRecords[0], null, 2));
+
+    try {
+      const insertedLocations = await Location.bulkCreate(locationRecords, {
+        validate: true,
+        ignoreDuplicates: true
+      });
+
+      console.log(`✅ Successfully created ${insertedLocations.length} location records`);
+      
+      // Verify insertion by counting
+      const verifyCount = await Location.count({
+        where: { player: username, genre: genre }
+      });
+      console.log(`✅ Verification: Found ${verifyCount} locations in database`);
+      
+      console.log('🌍 ===== WORLD GENERATION COMPLETE =====\n');
+      return insertedLocations.length;
+    } catch (insertError) {
+      console.error('❌ Database insertion failed:', insertError);
+      throw new Error(`Failed to insert locations: ${insertError.message}`);
+    }
+  } catch (error) {
+    console.error('❌ World generation failed:', error);
+    throw error;
+  }
+}
+
 // Adventure API endpoint
 router.post('/adv-api', authenticateUser, [
   body('input_text').notEmpty().withMessage('Input text is required')
@@ -23,22 +155,45 @@ router.post('/adv-api', authenticateUser, [
 
     // Check if starting new game
     if (inputData.toLowerCase().includes('start a new game')) {
-      console.log('Executing - Start New Game.');
-      await Convo.destroy({ where: { player: username, genre: 'Fantasy Adventure' } });
-      // Could also clear vector DB here if implemented
+        await Convo.destroy({ where: { player: username, genre: 'fantasy D&D' } });
+        // Also clear locations for fresh world generation
+        await Location.destroy({ where: { player: username, genre: 'fantasy D&D' } });
     }
 
     // Get saved conversation data
     const savedData = await Convo.findAll({
       where: { 
         player: username,
-        genre: 'Fantasy Adventure',
-        description: { [Op.ne]: '' }
+        genre: 'fantasy D&D'
       },
       order: [['id', 'DESC']],
       limit: 7,
       raw: true
     });
+
+    console.log('=== LOADING FROM DATABASE ===');
+    console.log('Found', savedData.length, 'records');
+    if (savedData.length > 0) {
+      console.log('Latest record:', JSON.stringify(savedData[0], null, 2));
+    }
+    console.log('=== END DATABASE LOAD ===');
+
+    // Generate world if this is the first game for this player OR if no world locations exist
+    const existingLocations = await Location.count({
+      where: { player: username, genre: 'fantasy D&D' }
+    });
+    
+    if (savedData.length === 0 || existingLocations === 0) {
+      console.log(`🌍 Adventure world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+      try {
+        await generateWorldLocations(username, 'fantasy D&D');
+        console.log('✅ Adventure world generation completed successfully');
+      } catch (worldGenError) {
+        console.error('❌ Adventure world generation failed:', worldGenError);
+        console.error('❌ Stack trace:', worldGenError.stack);
+        // Don't fail the request if world generation fails, but log the full error
+      }
+    }
 
     let messages = savedData.reverse();
 
@@ -47,7 +202,7 @@ router.post('/adv-api', authenticateUser, [
       const contextData = await Convo.findAll({
         where: { 
           player: username, 
-          genre: 'Fantasy Adventure',
+          genre: 'fantasy D&D',
           location: mylocation 
         },
         order: [['id', 'DESC']],
@@ -60,7 +215,6 @@ router.post('/adv-api', authenticateUser, [
         messages = [...context, ...messages];
       }
     } catch (error) {
-      console.error('Context data error:', error);
     }
 
     // Process the game turn
@@ -71,43 +225,45 @@ router.post('/adv-api', authenticateUser, [
       'adventure'
     );
 
-    // Save conversation to database
-    if (responseData.data) {
-      await Convo.create({
+    // Save conversation to database using deconstructed data
+    if (responseData.data && inputData.trim()) {
+      const savedRecord = await Convo.create({
         player: username,
         contentUser: inputData,
-        summary: '',
-        action: responseData.content,
-        genre: responseData.data.Genre || '',
-        query: responseData.data.Query || '',
-        temp: responseData.data.Temp || '',
-        name: responseData.data.Name || '',
-        playerClass: responseData.data.Class || '',
-        race: responseData.data.Race || '',
-        turn: responseData.data.Turn || '',
-        timePeriod: responseData.data.Time || '',
-        dayNumber: responseData.data.Day || '',
-        weather: responseData.data.Weather || '',
-        health: responseData.data.Health || '',
-        xp: responseData.data.XP || '',
-        ac: responseData.data.AC || '',
-        level: responseData.data.Level || '',
-        description: responseData.data.Description || '',
-        location: responseData.data.Location || '',
-        exits: Array.isArray(responseData.data.Exits) ? JSON.stringify(responseData.data.Exits) : String(responseData.data.Exits || ''),
-        inventory: Array.isArray(responseData.data.Inventory) ? JSON.stringify(responseData.data.Inventory) : String(responseData.data.Inventory || ''),
-        quest: responseData.data.Quest || '',
-        gender: responseData.data.Gender || '',
-        registered: responseData.data.Registered || '',
-        stats: typeof responseData.data.Stats === 'object' ? JSON.stringify(responseData.data.Stats) : String(responseData.data.Stats || ''),
-        gold: responseData.data.Gold || ''
+        contentAssistant: responseData.content,
+        summary: responseData.data.summary || '',
+        action: responseData.data.action || responseData.content,
+        genre: responseData.data.genre || 'fantasy D&D',
+        query: responseData.data.query || '',
+        temp: responseData.data.temp || '5',
+        name: responseData.data.name || '',
+        playerClass: responseData.data.playerClass || '',
+        race: responseData.data.race || '',
+        turn: responseData.data.turn || '1',
+        timePeriod: responseData.data.timePeriod || '',
+        dayNumber: responseData.data.dayNumber || '1',
+        weather: responseData.data.weather || '',
+        health: responseData.data.health || '',
+        xp: responseData.data.xp || '0',
+        ac: responseData.data.ac || '10',
+        level: responseData.data.level || '1',
+        description: responseData.data.description || '',
+        location: responseData.data.location || '',
+        inventory: responseData.data.inventory || '',
+        quest: responseData.data.quest || '',
+        gender: responseData.data.gender || '',
+        registered: responseData.data.registered || '',
+        stats: responseData.data.stats || '',
+        gold: responseData.data.gold || '0',
+        conversation: responseData.rawResponse || ''
       });
     }
 
     res.json(responseData);
   } catch (error) {
-    console.error('Adventure API error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('❌ Adventure API error:', error);
+    console.error('❌ Stack trace:', error.stack);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
@@ -127,20 +283,40 @@ router.post('/mys-api', authenticateUser, [
 
     // Same logic as adventure but with mystery game type
     if (inputData.toLowerCase().includes('start a new game')) {
-      console.log('Executing - Start New Game.');
-      await Convo.destroy({ where: { player: username, genre: 'Mystery' } });
+        await Convo.destroy({ where: { player: username, genre: 'Mystery' } });
     }
 
     const savedData = await Convo.findAll({
       where: { 
         player: username,
-        genre: 'Mystery',
-        description: { [Op.ne]: '' }
+        genre: 'Mystery'
       },
       order: [['id', 'DESC']],
       limit: 7,
       raw: true
     });
+
+    console.log('=== LOADING FROM DATABASE (MYSTERY) ===');
+    console.log('Found', savedData.length, 'records');
+    if (savedData.length > 0) {
+      console.log('Latest record:', JSON.stringify(savedData[0], null, 2));
+    }
+    console.log('=== END DATABASE LOAD (MYSTERY) ===');
+
+    // Generate world if this is the first game for this player OR if no world locations exist
+    const existingLocations = await Location.count({
+      where: { player: username, genre: 'Mystery' }
+    });
+    
+    if (savedData.length === 0 || existingLocations === 0) {
+      console.log(`🌍 Mystery world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+      try {
+        await generateWorldLocations(username, 'Mystery');
+      } catch (worldGenError) {
+        console.error('❌ Mystery world generation failed, continuing without world:', worldGenError);
+        // Don't fail the request if world generation fails
+      }
+    }
 
     let messages = savedData.reverse();
 
@@ -161,7 +337,6 @@ router.post('/mys-api', authenticateUser, [
         messages = [...context, ...messages];
       }
     } catch (error) {
-      console.error('Context data error:', error);
     }
 
     const responseData = await openaiService.processGameTurn(
@@ -171,41 +346,42 @@ router.post('/mys-api', authenticateUser, [
       'mystery'
     );
 
-    if (responseData.data) {
-      await Convo.create({
+    if (responseData.data && inputData.trim()) {
+      
+      const savedRecord = await Convo.create({
         player: username,
         contentUser: inputData,
-        summary: '',
-        action: responseData.content,
-        genre: responseData.data.Genre || '',
-        query: responseData.data.Query || '',
-        temp: responseData.data.Temp || '',
-        name: responseData.data.Name || '',
-        playerClass: responseData.data.Class || '',
-        race: responseData.data.Race || '',
-        turn: responseData.data.Turn || '',
-        timePeriod: responseData.data.Time || '',
-        dayNumber: responseData.data.Day || '',
-        weather: responseData.data.Weather || '',
-        health: responseData.data.Health || '',
-        xp: responseData.data.XP || '',
-        ac: responseData.data.AC || '',
-        level: responseData.data.Level || '',
-        description: responseData.data.Description || '',
-        location: responseData.data.Location || '',
-        exits: Array.isArray(responseData.data.Exits) ? JSON.stringify(responseData.data.Exits) : String(responseData.data.Exits || ''),
-        inventory: Array.isArray(responseData.data.Inventory) ? JSON.stringify(responseData.data.Inventory) : String(responseData.data.Inventory || ''),
-        quest: responseData.data.Quest || '',
-        gender: responseData.data.Gender || '',
-        registered: responseData.data.Registered || '',
-        stats: typeof responseData.data.Stats === 'object' ? JSON.stringify(responseData.data.Stats) : String(responseData.data.Stats || ''),
-        gold: responseData.data.Gold || ''
+        contentAssistant: responseData.content,
+        summary: responseData.data.summary || '',
+        action: responseData.data.action || responseData.content,
+        genre: responseData.data.genre || 'Mystery',
+        query: responseData.data.query || '',
+        temp: responseData.data.temp || '5',
+        name: responseData.data.name || '',
+        playerClass: responseData.data.playerClass || '',
+        race: responseData.data.race || '',
+        turn: responseData.data.turn || '1',
+        timePeriod: responseData.data.timePeriod || '',
+        dayNumber: responseData.data.dayNumber || '1',
+        weather: responseData.data.weather || '',
+        health: responseData.data.health || '',
+        xp: responseData.data.xp || '0',
+        ac: responseData.data.ac || '10',
+        level: responseData.data.level || '1',
+        description: responseData.data.description || '',
+        location: responseData.data.location || '',
+        inventory: responseData.data.inventory || '',
+        quest: responseData.data.quest || '',
+        gender: responseData.data.gender || '',
+        registered: responseData.data.registered || '',
+        stats: responseData.data.stats || '',
+        gold: responseData.data.gold || '0',
+        conversation: responseData.rawResponse || ''
       });
     }
 
     res.json(responseData);
   } catch (error) {
-    console.error('Mystery API error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -224,20 +400,40 @@ router.post('/sci-api', authenticateUser, [
     const username = req.user.username; // Get username from authenticated user
 
     if (inputData.toLowerCase().includes('start a new game')) {
-      console.log('Executing - Start New Game.');
-      await Convo.destroy({ where: { player: username, genre: 'Science Fiction' } });
+        await Convo.destroy({ where: { player: username, genre: 'Science Fiction' } });
     }
 
     const savedData = await Convo.findAll({
       where: { 
         player: username,
-        genre: 'Science Fiction',
-        description: { [Op.ne]: '' }
+        genre: 'Science Fiction'
       },
       order: [['id', 'DESC']],
       limit: 7,
       raw: true
     });
+
+    console.log('=== LOADING FROM DATABASE (SCIFI) ===');
+    console.log('Found', savedData.length, 'records');
+    if (savedData.length > 0) {
+      console.log('Latest record:', JSON.stringify(savedData[0], null, 2));
+    }
+    console.log('=== END DATABASE LOAD (SCIFI) ===');
+
+    // Generate world if this is the first game for this player OR if no world locations exist
+    const existingLocations = await Location.count({
+      where: { player: username, genre: 'Science Fiction' }
+    });
+    
+    if (savedData.length === 0 || existingLocations === 0) {
+      console.log(`🌍 Sci-fi world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+      try {
+        await generateWorldLocations(username, 'Science Fiction');
+      } catch (worldGenError) {
+        console.error('❌ Sci-fi world generation failed, continuing without world:', worldGenError);
+        // Don't fail the request if world generation fails
+      }
+    }
 
     let messages = savedData.reverse();
 
@@ -258,7 +454,6 @@ router.post('/sci-api', authenticateUser, [
         messages = [...context, ...messages];
       }
     } catch (error) {
-      console.error('Context data error:', error);
     }
 
     const responseData = await openaiService.processGameTurn(
@@ -268,41 +463,42 @@ router.post('/sci-api', authenticateUser, [
       'scifi'
     );
 
-    if (responseData.data) {
-      await Convo.create({
+    if (responseData.data && inputData.trim()) {
+      
+      const savedRecord = await Convo.create({
         player: username,
         contentUser: inputData,
-        summary: '',
-        action: responseData.content,
-        genre: responseData.data.Genre || '',
-        query: responseData.data.Query || '',
-        temp: responseData.data.Temp || '',
-        name: responseData.data.Name || '',
-        playerClass: responseData.data.Class || '',
-        race: responseData.data.Race || '',
-        turn: responseData.data.Turn || '',
-        timePeriod: responseData.data.Time || '',
-        dayNumber: responseData.data.Day || '',
-        weather: responseData.data.Weather || '',
-        health: responseData.data.Health || '',
-        xp: responseData.data.XP || '',
-        ac: responseData.data.AC || '',
-        level: responseData.data.Level || '',
-        description: responseData.data.Description || '',
-        location: responseData.data.Location || '',
-        exits: Array.isArray(responseData.data.Exits) ? JSON.stringify(responseData.data.Exits) : String(responseData.data.Exits || ''),
-        inventory: Array.isArray(responseData.data.Inventory) ? JSON.stringify(responseData.data.Inventory) : String(responseData.data.Inventory || ''),
-        quest: responseData.data.Quest || '',
-        gender: responseData.data.Gender || '',
-        registered: responseData.data.Registered || '',
-        stats: typeof responseData.data.Stats === 'object' ? JSON.stringify(responseData.data.Stats) : String(responseData.data.Stats || ''),
-        gold: responseData.data.Gold || ''
+        contentAssistant: responseData.content,
+        summary: responseData.data.summary || '',
+        action: responseData.data.action || responseData.content,
+        genre: responseData.data.genre || 'Science Fiction',
+        query: responseData.data.query || '',
+        temp: responseData.data.temp || '5',
+        name: responseData.data.name || '',
+        playerClass: responseData.data.playerClass || '',
+        race: responseData.data.race || '',
+        turn: responseData.data.turn || '1',
+        timePeriod: responseData.data.timePeriod || '',
+        dayNumber: responseData.data.dayNumber || '1',
+        weather: responseData.data.weather || '',
+        health: responseData.data.health || '',
+        xp: responseData.data.xp || '0',
+        ac: responseData.data.ac || '10',
+        level: responseData.data.level || '1',
+        description: responseData.data.description || '',
+        location: responseData.data.location || '',
+        inventory: responseData.data.inventory || '',
+        quest: responseData.data.quest || '',
+        gender: responseData.data.gender || '',
+        registered: responseData.data.registered || '',
+        stats: responseData.data.stats || '',
+        gold: responseData.data.gold || '0',
+        conversation: responseData.rawResponse || ''
       });
     }
 
     res.json(responseData);
   } catch (error) {
-    console.error('Sci-fi API error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -321,8 +517,7 @@ router.post('/custom-api', authenticateUser, [
     const username = req.user.username; // Get username from authenticated user
 
     if (inputData.toLowerCase().includes('start a new game')) {
-      console.log('Executing - Start New Game.');
-      await Convo.destroy({ 
+        await Convo.destroy({ 
         where: { 
           player: username,
           genre: 'Custom'
@@ -333,13 +528,19 @@ router.post('/custom-api', authenticateUser, [
     const savedData = await Convo.findAll({
       where: { 
         player: username,
-        genre: 'Custom',
-        description: { [Op.ne]: '' }
+        genre: 'Custom'
       },
       order: [['id', 'DESC']],
       limit: 7,
       raw: true
     });
+
+    console.log('=== LOADING FROM DATABASE (CUSTOM) ===');
+    console.log('Found', savedData.length, 'records');
+    if (savedData.length > 0) {
+      console.log('Latest record:', JSON.stringify(savedData[0], null, 2));
+    }
+    console.log('=== END DATABASE LOAD (CUSTOM) ===');
 
     let messages = savedData.reverse();
 
@@ -365,7 +566,6 @@ router.post('/custom-api', authenticateUser, [
         }
       }
     } catch (error) {
-      console.error('Context data error:', error);
     }
 
     const responseData = await openaiService.processGameTurn(
@@ -375,45 +575,68 @@ router.post('/custom-api', authenticateUser, [
       'custom'  // Use custom mode for player-specified universes
     );
 
-    if (responseData.data) {
-      // Always use 'Custom' as the static genre for custom games to avoid foreign key issues
-      const finalGenre = 'Custom';
+    if (responseData.data && inputData.trim()) {
       
-      await Convo.create({
+      const savedRecord = await Convo.create({
         player: username,
         contentUser: inputData,
-        summary: '',
-        action: responseData.content,
-        genre: finalGenre,
-        query: responseData.data.Query || '',
-        temp: responseData.data.Temp || '5',
-        name: responseData.data.Name || '',
-        playerClass: responseData.data.Class || '',
-        race: responseData.data.Race || '',
-        turn: responseData.data.Turn || '1',
-        timePeriod: responseData.data.Time || '',
-        dayNumber: responseData.data.Day || '1',
-        weather: responseData.data.Weather || '',
-        health: responseData.data.Health || '',
-        xp: responseData.data.XP || '0',
-        ac: responseData.data.AC || '10',
-        level: responseData.data.Level || '1',
-        description: responseData.data.Description || '',
-        quest: responseData.data.Quest || '',
-        location: responseData.data.Location || mylocation,
-        exits: Array.isArray(responseData.data.Exits) ? JSON.stringify(responseData.data.Exits) : String(responseData.data.Exits || ''),
-        inventory: Array.isArray(responseData.data.Inventory) ? JSON.stringify(responseData.data.Inventory) : String(responseData.data.Inventory || ''),
-        action: responseData.data.Action || '',
-        gender: responseData.data.Gender || '',
-        registered: responseData.data.Registered || '',
-        stats: typeof responseData.data.Stats === 'object' ? JSON.stringify(responseData.data.Stats) : String(responseData.data.Stats || ''),
-        gold: responseData.data.Gold || '0'
+        contentAssistant: responseData.content,
+        summary: responseData.data.summary || '',
+        action: responseData.data.action || responseData.content,
+        genre: responseData.data.genre || 'Custom',
+        query: responseData.data.query || '',
+        temp: responseData.data.temp || '5',
+        name: responseData.data.name || '',
+        playerClass: responseData.data.playerClass || '',
+        race: responseData.data.race || '',
+        turn: responseData.data.turn || '1',
+        timePeriod: responseData.data.timePeriod || '',
+        dayNumber: responseData.data.dayNumber || '1',
+        weather: responseData.data.weather || '',
+        health: responseData.data.health || '',
+        xp: responseData.data.xp || '0',
+        ac: responseData.data.ac || '10',
+        level: responseData.data.level || '1',
+        description: responseData.data.description || '',
+        quest: responseData.data.quest || '',
+        location: responseData.data.location || mylocation,
+        exits: responseData.data.exits || '',
+        inventory: responseData.data.inventory || '',
+        gender: responseData.data.gender || '',
+        registered: responseData.data.registered || '',
+        stats: responseData.data.stats || '',
+        gold: responseData.data.gold || '0',
+        conversation: responseData.rawResponse || ''
       });
+      
+      // Trigger custom world generation when player gets registered
+      if (responseData.data.registered === 'true') {
+        console.log('🎨 Player just got registered, checking if custom world generation needed...');
+        
+        // Check if world already exists
+        const existingLocations = await Location.count({
+          where: { player: username, genre: 'Custom' }
+        });
+        
+        if (existingLocations === 0) {
+          console.log('🌍 Generating custom world asynchronously...');
+          
+          // Extract custom world data from the game state and responses
+          const customWorldData = {
+            worldDescription: responseData.data.genre || 'custom world',
+            locationExamples: 'various locations appropriate for the custom setting'
+          };
+          
+          // Generate world asynchronously to not block the response
+          generateWorldLocations(username, 'Custom', customWorldData).catch(error => {
+            console.error('❌ Async custom world generation failed:', error);
+          });
+        }
+      }
     }
 
     res.json(responseData);
   } catch (error) {
-    console.error('Custom API error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -433,9 +656,18 @@ router.post('/get-pic', authenticateUser, [
 
     const { description, player, location, genre = 'Custom Adventure' } = req.body;
 
-    // Check if image already exists for this location
+    // Map frontend genre to database genre values
+    const genreMap = {
+      'adventure': 'fantasy D&D',
+      'scifi': 'Science Fiction',
+      'mystery': 'Mystery',
+      'custom': 'Custom'
+    };
+    const dbGenre = genreMap[genre.toLowerCase()] || genre;
+
+    // Check if image already exists for this location and genre
     const existingPic = await Picmap.findOne({
-      where: { player, location },
+      where: { player, location, genre: dbGenre },
       order: [['id', 'DESC']]
     });
 
@@ -444,22 +676,7 @@ router.post('/get-pic', authenticateUser, [
       return res.json([{ url: staticUrl + existingPic.picfile }]);
     }
 
-    // Ensure the location exists in the locations table before creating picmap
-    const locationExists = await Location.findOne({
-      where: { 
-        player, 
-        name: location,
-        genre: genre
-      }
-    });
-
-    if (!locationExists) {
-      console.log(`Location not found: player=${player}, location=${location}, genre=${genre}`);
-      return res.status(400).json({ 
-        error: 'Location must exist before generating image',
-        details: { player, location, genre }
-      });
-    }
+    // No need to check location existence anymore - images can be generated directly
 
     // Generate new image
     const imageUrl = await openaiService.generateImage(description, player, location, genre);
@@ -473,10 +690,10 @@ router.post('/get-pic', authenticateUser, [
         await Picmap.create({
           player,
           location,
+          genre: dbGenre,
           picfile: filename
         });
       } catch (dbError) {
-        console.error('Database save error for picmap:', dbError);
         // Don't fail the entire request if DB save fails - just log it
         // The image was still generated and saved to disk
       }
@@ -484,12 +701,10 @@ router.post('/get-pic', authenticateUser, [
       const staticUrl = process.env.STATIC_URL || '/static/uploaded_files/';
       res.json([{ url: staticUrl + filename }]);
     } catch (saveError) {
-      console.error('Image save error:', saveError);
       // Return the original URL if save fails
       res.json([{ url: imageUrl }]);
     }
   } catch (error) {
-    console.error('Image generation error:', error);
     res.status(500).json({ error: 'Failed to generate image' });
   }
 });
@@ -507,9 +722,18 @@ router.post('/location-image', authenticateUser, [
     const { location, description = '', genre = 'adventure' } = req.body;
     const username = req.user.username;
 
-    // Check if image already exists for this location
+    // Map frontend genre to database genre values
+    const genreMap = {
+      'adventure': 'fantasy D&D',
+      'scifi': 'Science Fiction',
+      'mystery': 'Mystery',
+      'custom': 'Custom'
+    };
+    const dbGenre = genreMap[genre.toLowerCase()] || genre;
+
+    // Check if image already exists for this location and genre
     const existingPic = await Picmap.findOne({
-      where: { player: username, location },
+      where: { player: username, location, genre: dbGenre },
       order: [['id', 'DESC']]
     });
 
@@ -531,18 +755,17 @@ router.post('/location-image', authenticateUser, [
           await Picmap.create({
             player: username,
             location,
+            genre: dbGenre,
             picfile: filename
           });
 
           const staticUrl = '/uploaded_files/';
           return res.json({ imageUrl: staticUrl + filename });
         } catch (saveError) {
-          console.error('Image save error:', saveError);
-          // Return the original URL if save fails
+              // Return the original URL if save fails
           return res.json({ imageUrl });
         }
       } catch (genError) {
-        console.error('Image generation error:', genError);
         // If image generation fails, that's OK - just return no image
         return res.json({ imageUrl: null });
       }
@@ -551,7 +774,6 @@ router.post('/location-image', authenticateUser, [
     // No image available
     res.json({ imageUrl: null });
   } catch (error) {
-    console.error('Location image error:', error);
     res.status(500).json({ error: 'Failed to get location image' });
   }
 });
@@ -562,8 +784,101 @@ router.post('/clear-cache', authenticateUser, (req, res) => {
     openaiService.clearInstructionCache();
     res.json({ success: true, message: 'Instruction cache cleared successfully' });
   } catch (error) {
-    console.error('Cache clear error:', error);
     res.status(500).json({ error: 'Failed to clear cache' });
+  }
+});
+
+// Manual world generation endpoint (for testing)
+router.post('/generate-world', authenticateUser, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const { genre = 'fantasy D&D', force = false } = req.body;
+    
+    let deletedLocations = 0, deletedConvos = 0, deletedImages = 0;
+    
+    // If force is true, delete existing world first
+    if (force) {
+      console.log(`🗑️ Force regeneration - clearing all data for ${username}, genre: ${genre}`);
+      
+      // Clear locations
+      deletedLocations = await Location.destroy({ 
+        where: { player: username, genre: genre } 
+      });
+      console.log(`🗑️ Deleted ${deletedLocations} existing locations`);
+      
+      // Clear conversations for this genre
+      deletedConvos = await Convo.destroy({
+        where: { player: username, genre: genre }
+      });
+      console.log(`🗑️ Deleted ${deletedConvos} conversation records`);
+      
+      // Clear images for this genre (handle missing genre column gracefully)
+      try {
+        deletedImages = await Picmap.destroy({
+          where: { player: username, genre: genre }
+        });
+        console.log(`🗑️ Deleted ${deletedImages} image records`);
+      } catch (dbError) {
+        if (dbError.message.includes('no such column: genre')) {
+          console.log('🗑️ Genre column not found in picmaps table, clearing all images for player');
+          deletedImages = await Picmap.destroy({
+            where: { player: username }
+          });
+          console.log(`🗑️ Deleted ${deletedImages} image records (all genres)`);
+        } else {
+          throw dbError;
+        }
+      }
+    }
+    
+    const locationCount = await generateWorldLocations(username, genre);
+    
+    res.json({
+      success: true,
+      message: `Generated ${locationCount} locations`,
+      player: username,
+      genre: genre,
+      cleared: force ? {
+        locations: deletedLocations,
+        conversations: deletedConvos,
+        images: deletedImages
+      } : null
+    });
+  } catch (error) {
+    console.error('Manual world generation failed:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate world',
+      details: error.message 
+    });
+  }
+});
+
+// Get world locations for current user
+router.get('/world-locations', authenticateUser, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const { genre = 'fantasy D&D', search } = req.query;
+    
+    let whereClause = { player: username, genre: genre };
+    
+    // Optional search by location name
+    if (search) {
+      whereClause.name = { [Op.iLike]: `%${search}%` };
+    }
+    
+    const locations = await Location.findAll({
+      where: whereClause,
+      order: [['name', 'ASC']],
+      attributes: ['id', 'name', 'description', 'exits']
+    });
+
+    res.json({ 
+      success: true, 
+      count: locations.length,
+      locations: locations 
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch world locations' });
   }
 });
 
@@ -584,8 +899,7 @@ router.post('/wipe-all-data', authenticateUser, async (req, res) => {
       // Clear ALL conversations for this user
       convoCount = await Convo.destroy({ where: { player: username } });
       
-      // Clear ALL locations and images for this user
-      locationCount = await Location.destroy({ where: { player: username } });
+      // Clear images for this user (no more location table)
       imageCount = await Picmap.destroy({ where: { player: username } });
       
       // Re-enable foreign key checks
@@ -594,7 +908,6 @@ router.post('/wipe-all-data', authenticateUser, async (req, res) => {
       // Clear instruction cache to ensure fresh instructions
       openaiService.clearInstructionCache();
       
-      console.log(`COMPLETE DATA WIPE for ${username}: ${convoCount} conversations, ${locationCount} locations, ${imageCount} images cleared`);
     } catch (error) {
       // Make sure to re-enable foreign keys even if there's an error
       await db.sequelize.query('PRAGMA foreign_keys=ON');
@@ -606,17 +919,15 @@ router.post('/wipe-all-data', authenticateUser, async (req, res) => {
       message: 'All user data completely wiped',
       cleared: {
         conversations: convoCount,
-        locations: locationCount,
         images: imageCount
       }
     });
   } catch (error) {
-    console.error('Complete wipe error:', error);
     res.status(500).json({ error: 'Failed to wipe data' });
   }
 });
 
-// Restart game endpoint - clears all user's game data
+// Restart game endpoint - clears all user's game data for specific genre
 router.post('/restart-game', authenticateUser, [
   body('gameType').optional().isIn(['adventure', 'scifi', 'mystery', 'custom']).withMessage('Invalid game type')
 ], async (req, res) => {
@@ -629,66 +940,78 @@ router.post('/restart-game', authenticateUser, [
     const { gameType } = req.body;
     const username = req.user.username;
 
-    // Clear user's conversation data (optionally for specific game type)
+    // Build where clause for genre-specific or all-genre clearing
     const whereClause = { player: username };
     if (gameType) {
       // Map gameType to actual genre values stored in database
       const genreMap = {
-        'adventure': 'Fantasy Adventure',
+        'adventure': 'fantasy D&D',
         'scifi': 'Science Fiction', 
         'mystery': 'Mystery',
-        'custom': { [Op.like]: '%' } // Custom can be any genre, so match all
+        'custom': 'Custom'
       };
       
-      if (gameType === 'custom') {
-        // For custom, use the static 'Custom' genre
-        whereClause.genre = 'Custom';
-      } else {
-        whereClause.genre = genreMap[gameType] || gameType;
+      whereClause.genre = genreMap[gameType] || gameType;
+    }
+
+    console.log(`🗑️ Restarting game for player: ${username}, gameType: ${gameType || 'ALL'}`);
+    console.log('🗑️ Where clause:', whereClause);
+
+    // Get location names before clearing (needed for image cleanup)
+    let locationNames = [];
+    try {
+      if (gameType) {
+        locationNames = await Location.findAll({
+          where: whereClause,
+          attributes: ['name'],
+          raw: true
+        });
       }
+    } catch (error) {
+      console.warn('⚠️ Location lookup failed (table may not exist yet):', error.message);
     }
 
     // Clear conversations
     const convoCount = await Convo.destroy({ where: whereClause });
+    console.log(`🗑️ Cleared ${convoCount} conversation records`);
     
-    // Clear locations (optionally for specific game type)
-    const locationWhereClause = { player: username };
-    if (gameType) {
-      // Use the same genre mapping as conversations
-      const genreMap = {
-        'adventure': 'Fantasy Adventure',
-        'scifi': 'Science Fiction', 
-        'mystery': 'Mystery',
-        'custom': { [Op.like]: '%' }
-      };
-      
-      if (gameType === 'custom') {
-        // For custom, use the static 'Custom' genre
-        locationWhereClause.genre = 'Custom';
-      } else {
-        locationWhereClause.genre = genreMap[gameType] || gameType;
-      }
-    }
-    // Declare variables outside try block to ensure they're accessible
+    // Note: Locations are no longer cleared on game restart - use separate world regeneration endpoint
+    
+    // Clear images - use genre-specific clearing if gameType specified
     let imageCount = 0;
-    let locationCount = 0;
-    
-    // Temporarily disable foreign key checks to avoid constraint issues
-    await db.sequelize.query('PRAGMA foreign_keys=OFF');
-    
     try {
-      // Clear images and locations
-      imageCount = await Picmap.destroy({ where: { player: username } });
-      locationCount = await Location.destroy({ where: locationWhereClause });
-      
-      // Re-enable foreign key checks
-      await db.sequelize.query('PRAGMA foreign_keys=ON');
-      
-      console.log(`Game restart for ${username}: ${convoCount} conversations, ${locationCount} locations, ${imageCount} images cleared`);
+      if (gameType) {
+        // For genre-specific restart, clear images for that specific genre
+        const genreMap = {
+          'adventure': 'fantasy D&D',
+          'scifi': 'Science Fiction', 
+          'mystery': 'Mystery',
+          'custom': 'Custom'
+        };
+        const dbGenre = genreMap[gameType] || gameType;
+        
+        try {
+          imageCount = await Picmap.destroy({ 
+            where: { 
+              player: username,
+              genre: dbGenre
+            } 
+          });
+        } catch (dbError) {
+          if (dbError.message.includes('no such column: genre')) {
+            console.warn('⚠️ Genre column not found in picmaps table, clearing all images for player');
+            imageCount = await Picmap.destroy({ where: { player: username } });
+          } else {
+            throw dbError;
+          }
+        }
+      } else {
+        // For full restart, clear all images for this user
+        imageCount = await Picmap.destroy({ where: { player: username } });
+      }
+      console.log(`🗑️ Cleared ${imageCount} image records`);
     } catch (error) {
-      // Make sure to re-enable foreign keys even if there's an error
-      await db.sequelize.query('PRAGMA foreign_keys=ON');
-      throw error;
+      console.warn('⚠️ Image clearing failed:', error.message);
     }
 
     res.json({ 
@@ -696,12 +1019,11 @@ router.post('/restart-game', authenticateUser, [
       message: gameType ? `${gameType} game restarted successfully` : 'All games restarted successfully',
       cleared: {
         conversations: convoCount,
-        locations: locationCount,
         images: imageCount
       }
     });
   } catch (error) {
-    console.error('Game restart error:', error);
+    console.error('❌ Restart game failed:', error);
     res.status(500).json({ error: 'Failed to restart game' });
   }
 });

@@ -6,17 +6,18 @@ const axios = require('axios');
 
 class OpenAIService {
   constructor() {
+    console.log('\n🤖 =============== INITIALIZING OPENAI SERVICE ===============');
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
     this.encoding = encoding_for_model('gpt-4');
     this.instructionsCache = new Map(); // Cache for game instructions
+    console.log('🤖 =============== OPENAI SERVICE READY ===============\n');
   }
 
   // Clear instruction cache (useful when instructions are updated)
   clearInstructionCache() {
     this.instructionsCache.clear();
-    console.log('Instruction cache cleared');
   }
 
   // Check token count to stay within limits (improved for better context)
@@ -43,33 +44,114 @@ class OpenAIService {
     return shortList;
   }
 
+  // Build clean JSON string without escaping for OpenAI (Method 5 - Pure text approach)
+  buildCleanGameStateJson(obj) {
+    const formatValue = (value) => {
+      if (value === null || value === undefined || value === '') return '""';
+      if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+        // Format nested objects like Exits and Stats using pure string concatenation
+        let result = '{\n';
+        const keys = Object.keys(value);
+        keys.forEach((key, index) => {
+          result += `    "${key}": "${value[key]}"`;
+          if (index < keys.length - 1) result += ',';
+          result += '\n';
+        });
+        result += '  }';
+        return result;
+      }
+      if (Array.isArray(value)) {
+        return '[]';
+      }
+      return `"${value}"`;
+    };
+    
+    // Build the main JSON object using pure string concatenation
+    let result = '{\n';
+    const keys = Object.keys(obj);
+    keys.forEach((key, index) => {
+      result += `  "${key}": ${formatValue(obj[key])}`;
+      if (index < keys.length - 1) result += ',';
+      result += '\n';
+    });
+    result += '}';
+    return result;
+  }
+
   // Extract JSON from GPT response
   extractJson(jsonString) {
-    const regex = /(\{.*\})/ms;
-    const matches = jsonString.match(regex);
-    return matches ? matches[1] : null;
+    try {
+      // Try to find JSON block - look for balanced braces
+      let braceCount = 0;
+      let jsonStart = -1;
+      let jsonEnd = -1;
+      
+      for (let i = 0; i < jsonString.length; i++) {
+        if (jsonString[i] === '{') {
+          if (braceCount === 0) {
+            jsonStart = i;
+          }
+          braceCount++;
+        } else if (jsonString[i] === '}') {
+          braceCount--;
+          if (braceCount === 0 && jsonStart !== -1) {
+            jsonEnd = i;
+            break;
+          }
+        }
+      }
+      
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const jsonStr = jsonString.substring(jsonStart, jsonEnd + 1);
+        
+        // Validate it's proper JSON
+        const parsed = JSON.parse(jsonStr);
+        return jsonStr;
+      }
+      
+      return null;
+    } catch (error) {
+      // Fallback to original regex approach
+      const regex = /(\{.*\})/ms;
+      const matches = jsonString.match(regex);
+      if (matches) {
+        try {
+          JSON.parse(matches[1]);
+          return matches[1];
+        } catch (parseError) {
+          return null;
+        }
+      }
+      return null;
+    }
   }
 
   // Query GPT with retry logic
   async queryGpt(eventList, model = 'gpt-4o', temperature = 0.6, retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        console.log('EVENT_LIST:', eventList);
-        
-        const response = await this.client.chat.completions.create({
+        const requestData = {
           model: model,
           messages: eventList,
           temperature: temperature,
           max_tokens: 1200, // Increased for better storytelling
           stream: false // Keep non-streaming for simplicity, but could enable later
-        });
+        };
+        
+        console.log('\n🚀 ================== OPENAI REQUEST ==================');
+        console.log(JSON.stringify(requestData, null, 2));
+        console.log('🚀 ================== END REQUEST ====================\n');
+        
+        const response = await this.client.chat.completions.create(requestData);
+
+        console.log('\n📨 ================== OPENAI RESPONSE ==================');
+        console.log(JSON.stringify(response, null, 2));
+        console.log('📨 ================== END RESPONSE ====================\n');
 
         return response.choices[0].message;
       } catch (error) {
-        console.error(`GPT API Error (attempt ${attempt}):`, error);
         
         if (error.status === 500 && attempt < retries) {
-          console.log('Server overloaded, retrying...');
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
           continue;
         }
@@ -93,11 +175,18 @@ class OpenAIService {
         adventure: 'instructions.txt',
         scifi: 'instructions-scifi.txt',
         mystery: 'instructions-mystery.txt',
-        custom: 'instructions-custom.txt'
+        custom: 'instructions-custom.txt',
+        clerk: 'instructions-clerk.txt'
       };
       
       const filename = instructionFiles[gameType] || instructionFiles.adventure;
       const instructionsPath = path.join(__dirname, '..', 'instructions', filename);
+      
+      console.log(`\n📚 =============== LOADING INSTRUCTIONS ===============`);
+      console.log(`Game type: ${gameType}`);
+      console.log(`Instruction file: ${filename}`);
+      console.log(`Full path: ${instructionsPath}`);
+      console.log(`📚 =============== END INSTRUCTION LOAD ===============\n`);
       
       const instructions = await fs.readFile(instructionsPath, 'utf-8');
       
@@ -106,7 +195,6 @@ class OpenAIService {
       
       return instructions;
     } catch (error) {
-      console.error('Error loading instructions:', error);
       const fallback = this.getDefaultInstructions();
       this.instructionsCache.set(gameType, fallback);
       return fallback;
@@ -120,96 +208,89 @@ class OpenAIService {
     Always include game data like location, health, inventory, etc. in your response.`;
   }
 
-  // Update location information in database
-  async updateLocationInfo(username, locationName, description, exits, genre) {
-    try {
-      const { Location } = require('../models');
-      
-      if (!Location) {
-        console.error('Location model not found');
-        return;
-      }
-      
-      if (!locationName || locationName === 'start' || locationName === '-') {
-        return;
-      }
+  // Map game types to database genre values
+  mapGameTypeToGenre(gameType) {
+    const genreMap = {
+      'adventure': 'fantasy D&D',
+      'scifi': 'Science Fiction',
+      'mystery': 'Mystery', 
+      'custom': 'Custom'
+    };
+    return genreMap[gameType] || gameType;
+  }
 
-      // Find or create the location record
-      const [location, created] = await Location.findOrCreate({
+  // Clean narrative text to ensure no JSON is displayed to users
+  sanitizeNarrativeText(text) {
+    if (!text) return text;
+    
+    // Remove any standalone JSON blocks that might have been missed
+    // Look for patterns like { "key": "value" } and remove them
+    let cleaned = text.replace(/\s*\{[\s\S]*?\}\s*/g, ' ');
+    
+    // Remove multiple spaces and trim
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // If the text is mostly JSON or very short after cleaning, provide a fallback
+    if (cleaned.length < 10) {
+      return 'You continue your adventure...';
+    }
+    
+    return cleaned;
+  }
+
+
+
+
+  // Get location data from database
+  async getLocationData(locationName, username, genre) {
+    try {
+      if (!locationName) return null;
+      
+      console.log(`🗺️ Looking up location: "${locationName}" for ${username} (${genre})`);
+      
+      const { Location } = require('../models');
+      const location = await Location.findOne({
         where: {
+          name: locationName,
           player: username,
-          genre: genre,
-          name: locationName
-        },
-        defaults: {
-          description: description || '',
-          shortDescription: this.createShortDescription(description),
-          exits: typeof exits === 'object' ? JSON.stringify(exits) : String(exits || ''),
-          visited: true,
-          visitCount: 1,
-          lastVisited: new Date()
+          genre: genre
         }
       });
-
-      if (!created) {
-        // Update existing location
-        await location.update({
-          description: description || location.description,
-          shortDescription: description ? this.createShortDescription(description) : location.shortDescription,
-          exits: typeof exits === 'object' ? JSON.stringify(exits) : String(exits || location.exits),
-          visitCount: location.visitCount + 1,
-          lastVisited: new Date()
-        });
+      
+      if (location) {
+        console.log(`✅ Found location data for: ${locationName}`);
+        return {
+          name: location.name,
+          description: location.description,
+          exits: JSON.parse(location.exits || '{}')
+        };
+      } else {
+        console.log(`❌ No location data found for: ${locationName}`);
+        return null;
       }
     } catch (error) {
-      console.error('Error updating location info:', error);
+      console.error(`❌ Error looking up location "${locationName}":`, error);
+      return null;
     }
   }
 
-  // Create a short description suitable for image generation
-  createShortDescription(fullDescription) {
-    if (!fullDescription) return '';
+  // Special method for custom game after registration - forces custom instructions
+  async processCustomGameTurn(user, messages, command) {
+    console.log('🎮 Processing custom game turn with forced custom instructions');
     
-    // Extract the first sentence or 100 characters, whichever is shorter
-    const firstSentence = fullDescription.split(/[.!?]/)[0];
-    const shortDesc = firstSentence.length > 100 ? 
-      fullDescription.substring(0, 100) + '...' : 
-      firstSentence + '.';
+    // Call the main method but override the instruction selection
+    const originalLoadInstructions = this.loadInstructions;
+    this.loadInstructions = async (gameType) => {
+      console.log('🎮 Forcing custom instructions for registered custom game');
+      return originalLoadInstructions.call(this, 'custom');
+    };
     
-    return shortDesc.trim();
-  }
-
-  // Get location context for OpenAI
-  async getLocationContext(username, locationName, genre) {
     try {
-      const { Location } = require('../models');
-      
-      if (!Location) {
-        console.error('Location model not found in getLocationContext');
-        return null;
-      }
-      
-      const location = await Location.findOne({
-        where: {
-          player: username,
-          genre: genre,
-          name: locationName
-        }
-      });
-
-      if (location) {
-        return {
-          hasVisited: location.visited,
-          visitCount: location.visitCount,
-          knownExits: location.exits,
-          description: location.description
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error getting location context:', error);
-      return null;
+      const result = await this.processGameTurn(user, messages, command, 'custom');
+      return result;
+    } finally {
+      // Restore the original method
+      this.loadInstructions = originalLoadInstructions;
     }
   }
 
@@ -226,59 +307,95 @@ class OpenAIService {
       let lastGameState = {};
       const eventList = [];
 
-      // Load game instructions with explicit length restriction
-      const instructions = await this.loadInstructions(gameType);
+      // Load game instructions with explicit length restriction  
+      // For custom games, determine if we need clerk instructions (new game) or regular custom instructions
+      let actualGameType = gameType;
+      if (gameType.toLowerCase() === 'custom') {
+        // Check if player is already registered by multiple methods:
+        // 1. Check previous messages for registration status
+        const isRegisteredInMessages = messages.length > 0 && messages.some(msg => 
+          msg.registered === 'true' || (typeof msg.registered === 'string' && msg.registered.toLowerCase() === 'true')
+        );
+        
+        // 2. Check if custom world locations exist in database (indicates completed registration)
+        let hasCustomWorld = false;
+        try {
+          const { Location } = require('../models');
+          const locationCount = await Location.count({
+            where: { player: user, genre: 'Custom' }
+          });
+          hasCustomWorld = locationCount > 0;
+          console.log(`🗺️ Custom world check: ${locationCount} locations found`);
+        } catch (error) {
+          console.log('⚠️ Could not check for existing custom world:', error.message);
+        }
+        
+        const isAlreadyRegistered = isRegisteredInMessages || hasCustomWorld;
+        
+        if (!isAlreadyRegistered) {
+          // New custom game - use clerk instructions
+          actualGameType = 'clerk';
+          console.log('🎭 Using clerk instructions for new custom game registration');
+        } else {
+          console.log('🎮 Using regular custom instructions for registered player');
+        }
+      }
+      
+      const instructions = await this.loadInstructions(actualGameType);
       const lengthEnforcement = `
 
-MANDATORY LENGTH RESTRICTION: Your narrative response MUST be 1-3 paragraphs only. Count your paragraphs before responding. If you write more than 3 paragraphs, you are failing to follow instructions.`;
+Keep your narrative response concise and engaging.`;
       
       const instruction = { role: 'system', content: instructions + lengthEnforcement };
 
-      // Process conversation history with narrative context
-      for (const event of messages) {
-        eventList.push({ role: 'user', content: event.contentUser || '' });
+      // Extract game state from most recent message only (no conversation history)
+      if (messages.length > 0) {
+        const lastEvent = messages[messages.length - 1];
         
-        // Include the actual narrative response that was given, not just JSON data
-        let narrativeContent = '';
-        if (event.action && event.action.length > 0) {
-          narrativeContent = event.action;
-        }
+        // Parse stored JSON fields back to objects if needed
+        let parsedStats = lastEvent.stats || '';
+        let parsedInventory = lastEvent.inventory || '';
         
-        const gameData = {
-          Genre: event.genre || '',
-          Temp: event.temp || '',
-          Name: event.name || '',
-          Class: event.playerClass || '',
-          Race: event.race || '',
-          Turn: event.turn || '',
-          Time: event.timePeriod || '',
-          Day: event.dayNumber || '',
-          Weather: event.weather || '',
-          Health: event.health || '',
-          XP: event.xp || '',
-          AC: event.ac || '',
-          Level: event.level || '',
-          Description: event.description || '',
-          Action: event.action || '',
-          Quest: event.quest || '',
-          Query: event.query || '',
-          Inventory: event.inventory || '',
-          Location: event.location || '',
-          Exits: event.exits || '',
-          Gender: event.gender || '',
-          Registered: event.registered || '',
-          Stats: event.stats || '',
-          Gold: event.gold || ''
-        };
+        try {
+          if (lastEvent.stats && lastEvent.stats.startsWith('{')) {
+            parsedStats = JSON.parse(lastEvent.stats);
+          }
+        } catch (e) { /* ignore */ }
+        
+        try {
+          if (lastEvent.inventory && lastEvent.inventory.startsWith('[')) {
+            parsedInventory = JSON.parse(lastEvent.inventory);
+          }
+        } catch (e) { /* ignore */ }
 
-        // Send both narrative and JSON for better context
-        const fullResponse = narrativeContent ? 
-          `${narrativeContent}\n\n${JSON.stringify(gameData)}` : 
-          JSON.stringify(gameData);
+        lastGameState = {
+          Genre: lastEvent.genre || '',
+          Temp: lastEvent.temp || '',
+          Name: lastEvent.name || '',
+          Class: lastEvent.playerClass || '',
+          Race: lastEvent.race || '',
+          Turn: lastEvent.turn || '',
+          Time: lastEvent.timePeriod || '',
+          Day: lastEvent.dayNumber || '',
+          Weather: lastEvent.weather || '',
+          Health: lastEvent.health || '',
+          XP: lastEvent.xp || '',
+          AC: lastEvent.ac || '',
+          Level: lastEvent.level || '',
+          Description: lastEvent.description || '',
+          Action: lastEvent.action || '',
+          Quest: lastEvent.quest || '',
+          Query: lastEvent.query || '',
+          Summary: lastEvent.summary || '',
+          Inventory: parsedInventory,
+          Location: lastEvent.location || '',
+          Gender: lastEvent.gender || '',
+          Registered: lastEvent.registered || '',
+          Stats: parsedStats,
+          Gold: lastEvent.gold || ''
+        };
         
-        eventList.push({ role: 'assistant', content: fullResponse });
-        temperature = event.temp ? parseInt(event.temp) / 10 : 0.6;
-        lastGameState = gameData; // Track the last game state for continuity
+        temperature = lastEvent.temp ? parseInt(lastEvent.temp) / 10 : 0.6;
       }
 
       // Validate temperature
@@ -286,113 +403,171 @@ MANDATORY LENGTH RESTRICTION: Your narrative response MUST be 1-3 paragraphs onl
         temperature = 0.6;
       }
 
-      // Get last game state
-      try {
-        if (eventList.length > 0) {
-          const lastEvent = eventList[eventList.length - 1];
-          lastGameState = JSON.parse(lastEvent.content);
-        } else {
-          // Initialize empty state
-          gameElements.forEach(element => {
-            lastGameState[element] = '';
-          });
-        }
-      } catch (error) {
-        console.error('Error parsing last game state:', error);
+      // Initialize empty state if no messages processed
+      if (messages.length === 0) {
         gameElements.forEach(element => {
           lastGameState[element] = '';
         });
       }
 
-      // Check token limits
-      const checkedEventList = this.checkTokenCount(eventList);
+      // No conversation history - just system message and current command
       
-      // Add instruction and context primer
-      checkedEventList.unshift(instruction);
+      // Look up current location data from world database
+      // Get genre-appropriate default starting location
+      const getDefaultStartLocation = (gameType) => {
+        const defaultLocations = {
+          'adventure': 'Adventurer\'s Guild',
+          'scifi': 'Unemployment Center',
+          'mystery': 'Newspaper Office',
+          'custom': 'Starting Location' // This will be customized per game
+        };
+        return defaultLocations[gameType] || 'Adventurer\'s Guild';
+      };
       
-      // Add gamestate JSON and context primer (Django-style approach)
-      if (lastGameState && lastGameState.Name) {
-        // Get location context if available - use 'Custom' genre for custom games
-        const contextGenre = gameType === 'custom' ? 'Custom' : (lastGameState.Genre || gameType);
-        const locationContext = await this.getLocationContext(user, lastGameState.Location, contextGenre);
+      const defaultStartLocation = getDefaultStartLocation(gameType);
+      let currentLocation = lastGameState.Location || defaultStartLocation;
+      const currentGenre = lastGameState.Genre || this.mapGameTypeToGenre(gameType);
+      let locationData = await this.getLocationData(currentLocation, user, currentGenre);
+      
+      // If the expected starting location doesn't exist, find the first available location for this player/genre
+      if (!locationData && !lastGameState.Location) {
+        console.log(`🗺️ Expected starting location "${currentLocation}" not found, looking for first available location...`);
+        const { Location } = require('../models');
+        const firstLocation = await Location.findOne({
+          where: { player: user, genre: currentGenre },
+          order: [['id', 'ASC']]
+        });
         
-        // Build current game state JSON string
-        const currentGameState = {
-          Genre: lastGameState.Genre || gameType,
-          Name: lastGameState.Name,
-          Class: lastGameState.Class,
-          Race: lastGameState.Race,
-          Turn: lastGameState.Turn,
-          Time: lastGameState.Time,
-          Day: lastGameState.Day,
-          Weather: lastGameState.Weather,
-          Health: lastGameState.Health,
-          XP: lastGameState.XP,
-          AC: lastGameState.AC,
-          Level: lastGameState.Level,
-          Location: lastGameState.Location,
-          Exits: lastGameState.Exits,
-          Quest: lastGameState.Quest,
-          Inventory: lastGameState.Inventory,
-          Gender: lastGameState.Gender,
-          Registered: lastGameState.Registered,
-          Stats: lastGameState.Stats,
-          Gold: lastGameState.Gold
-        };
-        
-        let contextContent = `CURRENT GAME STATE (maintain consistency):
-${JSON.stringify(currentGameState, null, 2)}
-
-CONTEXT: Continue the story for ${lastGameState.Name} (${lastGameState.Class}) at ${lastGameState.Location}. Current quest: ${lastGameState.Quest}.
-
-CRITICAL: Keep your narrative response to 1-3 paragraphs maximum. No exceptions!`;
-        
-        if (locationContext && locationContext.hasVisited) {
-          contextContent += ` This location has been visited ${locationContext.visitCount} time(s) before.`;
+        if (firstLocation) {
+          currentLocation = firstLocation.name;
+          locationData = {
+            name: firstLocation.name,
+            description: firstLocation.description,
+            exits: JSON.parse(firstLocation.exits || '{}')
+          };
+          console.log(`🗺️ Using first available location: "${currentLocation}"`);
         }
-        
-        // Add movement validation
-        const movementMatch = command.match(/go\s+(north|south|east|west|northeast|northwest|southeast|southwest|up|down)/i);
-        if (movementMatch) {
-          const direction = movementMatch[1].toLowerCase();
-          const currentExits = lastGameState.Exits || '';
-          
-          // Check if the requested direction is available
-          const availableExits = currentExits.toLowerCase().split(',').map(e => e.trim());
-          const isValidMove = availableExits.includes(direction);
-          
-          if (!isValidMove) {
-            contextContent += `\n\nCRITICAL: Player trying to go ${direction} but current exits are: ${currentExits}. REFUSE this movement!`;
-          } else {
-            const opposites = {
-              'north': 'south', 'south': 'north', 'east': 'west', 'west': 'east',
-              'northeast': 'southwest', 'southwest': 'northeast', 
-              'northwest': 'southeast', 'southeast': 'northwest',
-              'up': 'down', 'down': 'up'
-            };
-            const returnDirection = opposites[direction];
-            contextContent += `\n\nMoving ${direction} (valid). Return direction should be ${returnDirection}.`;
-          }
-        }
-        
-        contextContent += `\n\nPlayer action: "${command}"\n\nREMINDER: Response must be 1-3 paragraphs maximum. Be concise and impactful.`;
-        
-        const contextPrimer = {
-          role: 'system',
-          content: contextContent
-        };
-        checkedEventList.push(contextPrimer);
       }
       
-      checkedEventList.push({ role: 'user', content: command });
+      console.log(`🗺️ Location lookup result:`, locationData ? `Found ${locationData.name}` : 'Not found');
+      
+      // Include location data in context if available
+      let locationContext = '';
+      if (locationData) {
+        locationContext = `\n\nCURRENT LOCATION DETAILS:
+Name: ${locationData.name}
+Description: ${locationData.description}`;
+      }
+      
+      // Build current game state JSON string - fix field name mapping
+      const currentGameState = {
+        Summary: lastGameState.Summary || '',
+        Query: lastGameState.Query || '',
+        Temp: lastGameState.Temp || '5',
+        Registered: lastGameState.Registered || '',
+        Name: lastGameState.Name || '',
+        Gender: lastGameState.Gender || '',
+        Class: lastGameState.Class || '',
+        Race: lastGameState.Race || '',
+        Turn: lastGameState.Turn || '1',
+        Time: lastGameState.Time || '',
+        Day: lastGameState.Day || '',
+        Weather: lastGameState.Weather || '',
+        Health: lastGameState.Health || '',
+        Gold: lastGameState.Gold || '',
+        XP: lastGameState.XP || '',
+        AC: lastGameState.AC || '',
+        Level: lastGameState.Level || '',
+        Description: lastGameState.Description || '',
+        Quest: lastGameState.Quest || '',
+        Location: currentLocation,
+        Exits: locationData ? locationData.exits : {},
+        Stats: lastGameState.Stats || '',
+        Inventory: lastGameState.Inventory || '',
+        Genre: currentGenre
+      };
+      
+      // Build context content with unescaped JSON
+      let contextContent = 'CURRENT GAME STATE (maintain consistency):\n';
+      contextContent += this.buildCleanGameStateJson(currentGameState);
+      
+      
+      // Detect direction commands and look up destination location data
+      let userContent = command;
+      const directionPattern = /^(go|move|walk|travel|head)\s+(north|south|east|west|up|down|n|s|e|w)$/i;
+      const simpleDirectionPattern = /^(north|south|east|west|up|down|n|s|e|w)$/i;
+      
+      const directionMatch = command.match(directionPattern) || command.match(simpleDirectionPattern);
+      
+      if (directionMatch && locationData && locationData.exits) {
+        // Extract direction - for simple commands it's index 1, for complex it's index 2
+        const direction = (directionMatch[2] || directionMatch[1]).toLowerCase();
+        // Normalize short directions
+        const directionMap = { 'n': 'north', 's': 'south', 'e': 'east', 'w': 'west' };
+        const normalizedDirection = directionMap[direction] || direction;
+        
+        const destinationName = locationData.exits[normalizedDirection];
+        
+        if (destinationName) {
+          console.log(`🗺️ Player moving ${normalizedDirection} to: ${destinationName}`);
+          
+          // Look up destination location data
+          const destinationData = await this.getLocationData(destinationName, user, currentGenre);
+          
+          if (destinationData) {
+            console.log(`✅ Found destination data for: ${destinationName}`);
+            userContent = `${command}\n\nDESTINATION LOCATION DATA:\nName: ${destinationData.name}\nDescription: ${destinationData.description}\nExits: ${JSON.stringify(destinationData.exits)}`;
+          } else {
+            console.log(`❌ No destination data found for: ${destinationName}`);
+          }
+        } else {
+          console.log(`❌ No exit found in direction: ${normalizedDirection}`);
+        }
+      }
 
-      console.log('COMMAND:', { role: 'user', content: command });
+      // Create request with system message, conversation history, and current command
+      const combinedSystemContent = instructions + lengthEnforcement + '\n\n' + contextContent;
+      const requestMessages = [
+        {
+          role: 'system',
+          content: combinedSystemContent
+        }
+      ];
+
+      // Add conversation history from previous turns (up to 5 recent turns)
+      const recentMessages = messages.slice(-5); // Get last 5 turns
+      
+      for (const msg of recentMessages) {
+        // Add user message (player's previous action)
+        if (msg.query) {
+          requestMessages.push({
+            role: 'user',
+            content: msg.query
+          });
+        }
+        
+        // Add assistant message (game's previous response)
+        if (msg.description || msg.action) {
+          // Combine the narrative description with any action text
+          const responseText = [msg.description, msg.action].filter(Boolean).join('\n\n');
+          if (responseText.trim()) {
+            requestMessages.push({
+              role: 'assistant',
+              content: responseText
+            });
+          }
+        }
+      }
+
+      // Add the current user command
+      requestMessages.push({
+        role: 'user', 
+        content: userContent
+      });
 
       // Query GPT (using gpt-4o-mini for faster responses)
-      const message = await this.queryGpt(checkedEventList, 'gpt-4o-mini', temperature);
+      const message = await this.queryGpt(requestMessages, 'gpt-4o-mini', temperature);
       const messageContent = message.content.strip ? message.content.strip() : message.content.trim();
-      
-      console.log('MESSAGE:', messageContent);
 
       // Extract JSON from response
       const messageData = this.extractJson(messageContent);
@@ -401,12 +576,127 @@ CRITICAL: Keep your narrative response to 1-3 paragraphs maximum. No exceptions!
         const messageText = messageContent.replace(messageData, '').trim();
         const jsonData = JSON.parse(messageData);
 
+        // Check for custom game registration completion
+        if (gameType.toLowerCase() === 'custom' && jsonData.Registered === true) {
+          console.log('🎭 Custom registration completed! Triggering world generation...');
+          
+          // Extract custom world data from the registration JSON
+          const customWorldData = {
+            worldDescription: jsonData.Setting || 'fantasy world',
+            locationExamples: 'various locations appropriate for this setting',
+            startLocation: jsonData.StartLocation || 'Starting Location',
+            startLocationDescription: `You find yourself at the ${jsonData.StartLocation || 'Starting Location'}. This is where your adventure begins in ${jsonData.Setting || 'this world'}.`,
+            playerName: jsonData.Name || '',
+            playerClass: jsonData.Class || '',
+            playerRace: jsonData.Race || '',
+            tone: jsonData.Tone || '',
+            currency: jsonData.Currency || 'gold coins',
+            notes: jsonData.OtherNotes || ''
+          };
+          
+          // Trigger world generation asynchronously (don't block the response)
+          setTimeout(async () => {
+            try {
+              console.log('🌍 Generating custom world with registration data...');
+              
+              // Import the generateWorldLocations function from routes/api.js
+              // We need to replicate the logic here to save to database
+              const { Location } = require('../models');
+              const genre = 'Custom';
+              
+              // Generate world using OpenAI with custom data
+              const worldData = await this.generateWorld(user, 'custom', customWorldData);
+              
+              // Parse JSON response and save to database
+              console.log('🔧 Parsing and saving world JSON data...');
+              let locations;
+              try {
+                // Clean up the response - remove any markdown formatting
+                let cleanedData = worldData;
+                
+                if (cleanedData.includes('```json')) {
+                  cleanedData = cleanedData.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+                }
+                if (cleanedData.includes('json\n')) {
+                  cleanedData = cleanedData.replace(/json\n/g, '');
+                }
+                
+                cleanedData = cleanedData.trim();
+                if (!cleanedData.startsWith('[')) {
+                  const jsonStart = cleanedData.indexOf('[');
+                  if (jsonStart !== -1) {
+                    cleanedData = cleanedData.substring(jsonStart);
+                  }
+                }
+                
+                locations = JSON.parse(cleanedData);
+                console.log(`🔧 Parsed ${locations.length} locations`);
+              } catch (parseError) {
+                console.error('❌ JSON parsing failed:', parseError);
+                throw parseError;
+              }
+              
+              // Save locations to database
+              for (const location of locations) {
+                try {
+                  await Location.create({
+                    player: user,
+                    name: location.name,
+                    description: location.description,
+                    exits: JSON.stringify(location.exits || {}),
+                    genre: genre,
+                    datetime: new Date()
+                  });
+                } catch (locationError) {
+                  console.error(`❌ Failed to save location "${location.name}":`, locationError);
+                }
+              }
+              
+              console.log(`✅ Custom world generation completed - saved ${locations.length} locations`);
+              
+              // After world generation, trigger an automatic "look around" with custom instructions
+              console.log('🎮 Switching to custom game instructions and initializing world...');
+              
+              // Get the updated messages (including the current registration response)
+              const { Convo } = require('../models');
+              const updatedMessages = await Convo.findAll({
+                where: { 
+                  player: user,
+                  genre: 'Custom'
+                },
+                order: [['id', 'DESC']],
+                limit: 7,
+                raw: true
+              });
+              
+              // Process "look around" command with custom instructions
+              // Force custom instructions by calling processGameTurn with a flag indicating registration is complete
+              const initResponse = await this.processCustomGameTurn(user, updatedMessages.reverse(), 'look around');
+              
+              // Save the initialization response to database 
+              await Convo.create({
+                player: user,
+                datetime: new Date(),
+                ...initResponse.data,
+                conversation: JSON.stringify(initResponse)
+              });
+              
+              console.log('✅ Custom world initialized successfully');
+            } catch (error) {
+              console.error('❌ Custom world generation/initialization failed:', error);
+            }
+          }, 2000); // Slightly longer delay to ensure registration is saved first
+        }
+
         // Use Description as narrative if message text is empty
         let narrativeText = messageText;
         if (!narrativeText) {
           narrativeText = jsonData.Description || '';
           jsonData.Description = '';
         }
+        
+        // Extra safety: Remove any remaining JSON-like patterns from narrative
+        narrativeText = this.sanitizeNarrativeText(narrativeText);
 
         // Fill in missing game elements from last state
         if (lastGameState) {
@@ -417,35 +707,123 @@ CRITICAL: Keep your narrative response to 1-3 paragraphs maximum. No exceptions!
           });
         }
 
-        // Update location information in database
-        if (jsonData.Location && jsonData.Location !== '-') {
-          // For custom games, always use 'Custom' as the static genre
-          const locationGenre = gameType === 'custom' ? 'Custom' : (jsonData.Genre || gameType);
-          await this.updateLocationInfo(
-            user, 
-            jsonData.Location, 
-            jsonData.Description || narrativeText,
-            jsonData.Exits,
-            locationGenre
-          );
-        }
 
-        return {
-          content: narrativeText,
-          data: jsonData
-        };
-      } else {
-        // Fallback if no JSON found
-        const fallbackResponse = {
-          content: messageContent,
-          data: lastGameState
+        
+        // Enforce permanent registration: once registered, always registered
+        let finalRegistered = jsonData.Registered || '';
+        let finalName = jsonData.Name || '';
+        let finalPlayerClass = jsonData.Class || '';
+        let finalRace = jsonData.Race || '';
+        let finalStats = typeof jsonData.Stats === 'object' ? JSON.stringify(jsonData.Stats) : (jsonData.Stats || '');
+        
+        // If we have previous game state and it was registered, keep it registered
+        if (lastGameState && lastGameState.Registered === 'true') {
+          finalRegistered = 'true';
+          
+          // Preserve previous registration data if new response doesn't have it
+          if (!finalName && lastGameState.Name) {
+            finalName = lastGameState.Name;
+          }
+          if (!finalPlayerClass && lastGameState.Class) {
+            finalPlayerClass = lastGameState.Class;
+          }
+          if (!finalRace && lastGameState.Race) {
+            finalRace = lastGameState.Race;
+          }
+          if (!finalStats || finalStats === '""' || finalStats === '{}') {
+            if (typeof lastGameState.Stats === 'object') {
+              finalStats = JSON.stringify(lastGameState.Stats);
+            } else if (lastGameState.Stats) {
+              finalStats = lastGameState.Stats;
+            }
+          }
+        }
+        
+        // Return deconstructed data for storing in individual database fields
+        const mappedData = {
+          summary: jsonData.Summary || '',
+          query: command, // Store the actual user command, not AI's interpretation
+          temp: jsonData.Temp || '5',
+          registered: finalRegistered,
+          name: finalName,
+          gender: jsonData.Gender || '',
+          playerClass: finalPlayerClass,
+          race: finalRace,
+          turn: jsonData.Turn || '1',
+          timePeriod: jsonData.Time || '',
+          dayNumber: jsonData.Day || '',
+          weather: jsonData.Weather || '',
+          health: jsonData.Health || '',
+          gold: jsonData.Gold || '',
+          xp: jsonData.XP || '',
+          ac: jsonData.AC || '',
+          level: jsonData.Level || '',
+          description: jsonData.Description || '',
+          quest: jsonData.Quest || '',
+          location: jsonData.Location || '',
+          stats: finalStats,
+          inventory: Array.isArray(jsonData.Inventory) ? JSON.stringify(jsonData.Inventory) : (jsonData.Inventory || ''),
+          genre: jsonData.Genre || this.mapGameTypeToGenre(gameType),
+          action: narrativeText
         };
         
-        console.log('JSON-FAIL:', JSON.stringify(fallbackResponse));
+        
+        return {
+          content: narrativeText,
+          data: mappedData,
+          rawResponse: messageContent // Include raw OpenAI response
+        };
+      } else {
+        // Fallback if no JSON found - create game state from narrative and previous state
+        
+        // Initialize default values for new game
+        const currentTurn = lastGameState.Turn ? parseInt(lastGameState.Turn) + 1 : 1;
+        const currentTime = lastGameState.Time || '10:00 AM';
+        const currentDay = lastGameState.Day || '1';
+        const currentWeather = lastGameState.Weather || 'sunny';
+        const currentLocation = lastGameState.Location || '';
+        // Exits will be loaded from locations DB, not stored in fallback
+        
+        // Enforce permanent registration in fallback too
+        let fallbackRegistered = lastGameState.Registered || '';
+        if (lastGameState && lastGameState.Registered === 'true') {
+          fallbackRegistered = 'true';
+        }
+        
+        const fallbackResponse = {
+          content: this.sanitizeNarrativeText(messageContent),
+          data: {
+            summary: `Turn ${currentTurn}: Player action processed`,
+            query: command, // Store actual user command in fallback too
+            temp: lastGameState.Temp || '5',
+            registered: fallbackRegistered,
+            name: lastGameState.Name || '',
+            gender: lastGameState.Gender || '',
+            playerClass: lastGameState.Class || '',
+            race: lastGameState.Race || '',
+            turn: currentTurn.toString(),
+            timePeriod: currentTime,
+            dayNumber: currentDay,
+            weather: currentWeather,
+            health: lastGameState.Health || '',
+            gold: lastGameState.Gold || '10',
+            xp: lastGameState.XP || '0',
+            ac: lastGameState.AC || '10',
+            level: lastGameState.Level || '1',
+            description: messageContent,
+            quest: lastGameState.Quest || '',
+            location: currentLocation,
+            stats: typeof lastGameState.Stats === 'object' ? JSON.stringify(lastGameState.Stats) : (lastGameState.Stats || ''),
+            inventory: Array.isArray(lastGameState.Inventory) ? JSON.stringify(lastGameState.Inventory) : (lastGameState.Inventory || '["pocket lint"]'),
+            genre: lastGameState.Genre || this.mapGameTypeToGenre(gameType),
+            action: messageContent
+          },
+          rawResponse: messageContent // Include raw OpenAI response for fallback too
+        };
+        
         return fallbackResponse;
       }
     } catch (error) {
-      console.error('Game processing error:', error);
       throw error;
     }
   }
@@ -471,17 +849,148 @@ CRITICAL: Keep your narrative response to 1-3 paragraphs maximum. No exceptions!
         enhancedPrompt += ', absolutely no modern swimming pools, no concrete, no modern architecture, medieval fantasy only';
       }
       
-      console.log('Image generation prompt:', enhancedPrompt);
-      
-      const response = await this.client.images.generate({
+      const imageRequestData = {
         prompt: enhancedPrompt,
         n: 1,
         size: '256x256'
-      });
+      };
+      
+      console.log('=== OPENAI IMAGE REQUEST ===');
+      console.log(JSON.stringify(imageRequestData, null, 2));
+      console.log('=== END IMAGE REQUEST ===');
+      
+      const response = await this.client.images.generate(imageRequestData);
+
+      console.log('=== OPENAI IMAGE RESPONSE ===');
+      console.log(JSON.stringify(response, null, 2));
+      console.log('=== END IMAGE RESPONSE ===');
 
       return response.data[0].url;
     } catch (error) {
-      console.error('Image generation error:', error);
+      throw error;
+    }
+  }
+
+  // Generate world locations based on game genre
+  async generateWorld(username, gameType = 'adventure', customWorldData = null) {
+    try {
+      console.log('\n🌍 =============== GENERATING WORLD ===============');
+      console.log(`Generating world for player: ${username}`);
+      console.log(`Game type: ${gameType}`);
+
+      // Safety check: Prevent regenerating existing worlds
+      const { Location } = require('../models');
+      const genre = this.mapGameTypeToGenre(gameType);
+      const existingCount = await Location.count({
+        where: { player: username, genre: genre }
+      });
+      
+      if (existingCount > 0) {
+        console.log(`🌍 Safety check: World already exists (${existingCount} locations), skipping generation`);
+        return '[]'; // Return empty world data since locations already exist
+      }
+
+      // Handle custom game world generation
+      if (gameType.toLowerCase() === 'custom' && customWorldData) {
+        console.log('🎨 Generating custom world with user specifications');
+        
+        // Load custom world template
+        let worldInstructions = await fs.readFile(
+          path.join(__dirname, '..', 'instructions', 'world_custom.txt'), 
+          'utf-8'
+        );
+
+        // Replace placeholders with custom data from registration
+        worldInstructions = worldInstructions.replace('{world_description}', customWorldData.worldDescription || 'fantasy world');
+        worldInstructions = worldInstructions.replace('{location_examples}', customWorldData.locationExamples || 'various locations');
+        worldInstructions = worldInstructions.replace('{start_location}', customWorldData.startLocation || 'Starting Location');
+        worldInstructions = worldInstructions.replace('start_location_description', customWorldData.startLocationDescription || 'This is where your adventure begins.');
+        
+        console.log(`🎭 Replaced placeholders: Setting="${customWorldData.worldDescription}", StartLocation="${customWorldData.startLocation}"`);
+
+        const worldRequest = {
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: worldInstructions
+            },
+            {
+              role: 'user',
+              content: `Generate 40 to 60 world locations for this custom world: "${customWorldData.worldDescription}". Make sure the response is complete and valid JSON format with proper closing bracket.`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 8000
+        };
+
+        console.log('🚀 Sending custom world generation request to OpenAI...');
+        const response = await this.client.chat.completions.create(worldRequest);
+        const worldData = response.choices[0].message.content.trim();
+
+        console.log('📨 Received custom world data from OpenAI');
+        console.log('Response length:', worldData.length);
+        console.log('🌍 =============== END CUSTOM WORLD GENERATION ===============\n');
+
+        return worldData;
+      }
+
+      // Map game types to world instruction files
+      const worldInstructionFiles = {
+        adventure: 'world_adv.txt',
+        scifi: 'world_sci.txt', 
+        mystery: 'world_mys.txt',
+        custom: 'world_custom.txt'
+      };
+
+      const filename = worldInstructionFiles[gameType.toLowerCase()] || worldInstructionFiles.adventure;
+      
+      // Load world generation instructions from file
+      let worldInstructions = await fs.readFile(
+        path.join(__dirname, '..', 'instructions', filename), 
+        'utf-8'
+      );
+
+      // Handle custom game type placeholder replacement
+      if (gameType.toLowerCase() === 'custom') {
+        worldInstructions = worldInstructions.replace('{world_description}', 'fantasy adventure world');
+        worldInstructions = worldInstructions.replace('{location_examples}', 'villages, forests, dungeons, mountains, castles, taverns, shops');
+        worldInstructions = worldInstructions.replace('{start_location}', 'Starting Location');
+        worldInstructions = worldInstructions.replace('start_location_description', 'This is where your adventure begins in this fantasy world.');
+      }
+
+      console.log(`World generation instructions loaded from: ${filename}`);
+
+      // Create world generation request
+      const worldRequest = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: worldInstructions
+          },
+          {
+            role: 'user',
+            content: `Generate 80-120 world locations in valid JSON format for ${gameType} genre. Make sure the response is complete and ends with a proper closing bracket.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 8000
+      };
+
+      console.log('🚀 Sending world generation request to OpenAI...');
+      const response = await this.client.chat.completions.create(worldRequest);
+      const worldData = response.choices[0].message.content.trim();
+
+      console.log('📨 Received world data from OpenAI');
+      console.log('Response length:', worldData.length);
+      console.log('First 200 characters:', worldData.substring(0, 200));
+      console.log('Last 200 characters:', worldData.substring(worldData.length - 200));
+      console.log('🌍 =============== END GENERATING WORLD ===============\n');
+
+      return worldData;
+    } catch (error) {
+      console.error('❌ World generation failed:', error);
       throw error;
     }
   }
@@ -504,7 +1013,6 @@ CRITICAL: Keep your narrative response to 1-3 paragraphs maximum. No exceptions!
         writer.on('error', reject);
       });
     } catch (error) {
-      console.error('Image save error:', error);
       throw error;
     }
   }
