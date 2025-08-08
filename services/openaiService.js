@@ -294,6 +294,549 @@ class OpenAIService {
     }
   }
 
+  // Simplified fantasy-only game processing
+  async processFantasyGame(user, command, previousGameState = null, availableQuests = []) {
+    try {
+      console.log('🎮 ===== SIMPLIFIED FANTASY GAME TURN =====');
+      console.log(`Player: ${user}`);
+      console.log(`Command: ${command}`);
+      
+      // Load fantasy instructions
+      const instructions = await fs.readFile(
+        path.join(__dirname, '..', 'instructions', 'instructions.txt'), 
+        'utf-8'
+      );
+      
+      // Get the current game state from the database
+      const { Convo, Location } = require('../models');
+      const lastConvo = await Convo.findOne({
+        where: { 
+          player: user,
+          genre: 'fantasy D&D'
+        },
+        order: [['id', 'DESC']]
+      });
+      
+      let currentGameState = null;
+      if (lastConvo) {
+        // Build current game state from database
+        currentGameState = {
+          Summary: lastConvo.summary || '',
+          Query: command,
+          Temp: lastConvo.temp || '5',
+          Registered: lastConvo.registered || '',
+          Name: lastConvo.name || '',
+          Gender: lastConvo.gender || '',
+          Class: lastConvo.playerClass || '',
+          Race: lastConvo.race || '',
+          Turn: lastConvo.turn || '1',
+          Time: lastConvo.timePeriod || '',
+          Day: lastConvo.dayNumber || '',
+          Weather: lastConvo.weather || '',
+          Health: lastConvo.health || '',
+          Gold: lastConvo.gold || '',
+          XP: lastConvo.xp || '',
+          AC: lastConvo.ac || '',
+          Level: lastConvo.level || '',
+          Description: lastConvo.description || '',
+          Quest: lastConvo.quest || '',
+          Location: lastConvo.location || '',
+          Exits: {},  // Will be populated from location lookup
+          Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
+          Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
+          Genre: 'fantasy D&D'
+        };
+        
+        // Look up exit information from location table
+        if (currentGameState.Location) {
+          console.log(`🗺️ Looking up exits for location: ${currentGameState.Location}`);
+          const locationData = await Location.findOne({
+            where: {
+              name: currentGameState.Location,
+              player: user,
+              genre: 'fantasy D&D'
+            }
+          });
+          
+          if (locationData && locationData.exits) {
+            try {
+              currentGameState.Exits = JSON.parse(locationData.exits);
+              console.log('✅ Found exits:', currentGameState.Exits);
+            } catch (error) {
+              console.error('❌ Error parsing exits JSON:', error);
+              currentGameState.Exits = {};
+            }
+          } else {
+            console.log('⚠️ No exit data found for location');
+          }
+        }
+      }
+      
+      // Build system message with current game state appended
+      let systemContent = instructions;
+      if (currentGameState) {
+        systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
+      }
+      
+      // Add available quests to system context
+      if (availableQuests && availableQuests.length > 0) {
+        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
+        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
+        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      }
+      
+      // Build the request messages
+      const messages = [
+        {
+          role: 'system',
+          content: systemContent
+        }
+      ];
+      
+      // Add current user command
+      messages.push({
+        role: 'user',
+        content: command
+      });
+      
+      console.log('🚀 Sending request to OpenAI...');
+      console.log('📋 FULL OPENAI REQUEST:');
+      console.log('='.repeat(80));
+      const fullRequest = {
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      };
+      console.log(JSON.stringify(fullRequest, null, 2));
+      console.log('='.repeat(80));
+      
+      // Send to OpenAI
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+      
+      const aiResponse = response.choices[0].message.content;
+      console.log('📨 Received response from OpenAI');
+      console.log('Response length:', aiResponse.length);
+      console.log('🤖 FULL AI RESPONSE:');
+      console.log('='.repeat(80));
+      console.log(aiResponse);
+      console.log('='.repeat(80));
+      
+      let gameState = null;
+      let narrative = '';
+      
+      // Try to parse the entire response as JSON first
+      try {
+        gameState = JSON.parse(aiResponse.trim());
+        console.log('✅ Successfully parsed entire response as JSON');
+        
+        // Use the Description field as the narrative for the player
+        narrative = gameState.Description || 'You continue your adventure...';
+        console.log('📖 Using Description field as narrative');
+        
+      } catch (error) {
+        console.log('⚠️ Response is not pure JSON, trying to extract JSON from text...');
+        
+        // Fallback to old method: extract JSON from mixed text response
+        const gameStateJson = this.extractJson(aiResponse);
+        
+        if (gameStateJson) {
+          try {
+            gameState = JSON.parse(gameStateJson);
+            console.log('✅ Successfully parsed extracted game state JSON');
+            
+            // Remove JSON from narrative response and use remaining text
+            narrative = aiResponse.replace(gameStateJson, '').trim();
+            
+          } catch (parseError) {
+            console.error('❌ Failed to parse extracted game state JSON:', parseError);
+            narrative = aiResponse.trim();
+          }
+        } else {
+          console.log('⚠️ No JSON found in response');
+          narrative = aiResponse.trim();
+        }
+      }
+      
+      return {
+        narrative: narrative,
+        gameState: gameState,
+        rawResponse: aiResponse
+      };
+      
+    } catch (error) {
+      console.error('❌ Error in processFantasyGame:', error);
+      throw error;
+    }
+  }
+
+  // Simplified sci-fi game processing
+  async processScifiGame(user, command, previousGameState = null, availableQuests = []) {
+    try {
+      console.log('🚀 ===== SIMPLIFIED SCI-FI GAME TURN =====');
+      console.log(`Player: ${user}`);
+      console.log(`Command: ${command}`);
+      
+      // Load sci-fi instructions
+      const instructions = await fs.readFile(
+        path.join(__dirname, '..', 'instructions', 'instructions-scifi.txt'), 
+        'utf-8'
+      );
+      
+      // Get the current game state from the database
+      const { Convo, Location } = require('../models');
+      const lastConvo = await Convo.findOne({
+        where: { 
+          player: user,
+          genre: 'Science Fiction'
+        },
+        order: [['id', 'DESC']]
+      });
+      
+      let currentGameState = null;
+      if (lastConvo) {
+        // Build current game state from database
+        currentGameState = {
+          Summary: lastConvo.summary || '',
+          Query: command,
+          Temp: lastConvo.temp || '5',
+          Registered: lastConvo.registered || '',
+          Name: lastConvo.name || '',
+          Gender: lastConvo.gender || '',
+          Class: lastConvo.playerClass || '',
+          Race: lastConvo.race || '',
+          Turn: lastConvo.turn || '1',
+          Time: lastConvo.timePeriod || '',
+          Day: lastConvo.dayNumber || '',
+          Weather: lastConvo.weather || '',
+          Health: lastConvo.health || '',
+          Gold: lastConvo.gold || '',
+          XP: lastConvo.xp || '',
+          AC: lastConvo.ac || '',
+          Level: lastConvo.level || '',
+          Description: lastConvo.description || '',
+          Quest: lastConvo.quest || '',
+          Location: lastConvo.location || '',
+          Exits: {},  // Will be populated from location lookup
+          Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
+          Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
+          Genre: 'Science Fiction'
+        };
+        
+        // Look up exit information from location table
+        if (currentGameState.Location) {
+          console.log(`🗺️ Looking up exits for location: ${currentGameState.Location}`);
+          const locationData = await Location.findOne({
+            where: {
+              name: currentGameState.Location,
+              player: user,
+              genre: 'Science Fiction'
+            }
+          });
+          
+          if (locationData && locationData.exits) {
+            try {
+              currentGameState.Exits = JSON.parse(locationData.exits);
+              console.log('✅ Found exits:', currentGameState.Exits);
+            } catch (error) {
+              console.error('❌ Error parsing exits JSON:', error);
+              currentGameState.Exits = {};
+            }
+          } else {
+            console.log('⚠️ No exit data found for location');
+          }
+        }
+      }
+      
+      // Build system message with current game state appended
+      let systemContent = instructions;
+      if (currentGameState) {
+        systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
+      }
+      
+      // Add available quests to system context
+      if (availableQuests && availableQuests.length > 0) {
+        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
+        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
+        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      }
+      
+      // Build the request messages
+      const messages = [
+        {
+          role: 'system',
+          content: systemContent
+        }
+      ];
+      
+      // Add current user command
+      messages.push({
+        role: 'user',
+        content: command
+      });
+      
+      console.log('🚀 Sending request to OpenAI...');
+      console.log('📋 FULL OPENAI REQUEST:');
+      console.log('='.repeat(80));
+      const fullRequest = {
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      };
+      console.log(JSON.stringify(fullRequest, null, 2));
+      console.log('='.repeat(80));
+      
+      // Send to OpenAI
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+      
+      const aiResponse = response.choices[0].message.content;
+      console.log('📨 Received response from OpenAI');
+      console.log('Response length:', aiResponse.length);
+      console.log('🤖 FULL AI RESPONSE:');
+      console.log('='.repeat(80));
+      console.log(aiResponse);
+      console.log('='.repeat(80));
+      
+      let gameState = null;
+      let narrative = '';
+      
+      // Try to parse the entire response as JSON first
+      try {
+        gameState = JSON.parse(aiResponse.trim());
+        console.log('✅ Successfully parsed entire response as JSON');
+        
+        // Use the Description field as the narrative for the player
+        narrative = gameState.Description || 'You continue your sci-fi adventure...';
+        console.log('📖 Using Description field as narrative');
+        
+      } catch (error) {
+        console.log('⚠️ Response is not pure JSON, trying to extract JSON from text...');
+        
+        // Fallback to old method: extract JSON from mixed text response
+        const gameStateJson = this.extractJson(aiResponse);
+        
+        if (gameStateJson) {
+          try {
+            gameState = JSON.parse(gameStateJson);
+            console.log('✅ Successfully parsed extracted game state JSON');
+            
+            // Remove JSON from narrative response and use remaining text
+            narrative = aiResponse.replace(gameStateJson, '').trim();
+            
+          } catch (parseError) {
+            console.error('❌ Failed to parse extracted game state JSON:', parseError);
+            narrative = aiResponse.trim();
+          }
+        } else {
+          console.log('⚠️ No JSON found in response');
+          narrative = aiResponse.trim();
+        }
+      }
+      
+      return {
+        narrative: narrative,
+        gameState: gameState,
+        rawResponse: aiResponse
+      };
+      
+    } catch (error) {
+      console.error('❌ Error in processScifiGame:', error);
+      throw error;
+    }
+  }
+
+  // Simplified mystery game processing
+  async processMysteryGame(user, command, previousGameState = null, availableQuests = []) {
+    try {
+      console.log('🔍 ===== SIMPLIFIED MYSTERY GAME TURN =====');
+      console.log(`Player: ${user}`);
+      console.log(`Command: ${command}`);
+      
+      // Load mystery instructions
+      const instructions = await fs.readFile(
+        path.join(__dirname, '..', 'instructions', 'instructions-mystery.txt'), 
+        'utf-8'
+      );
+      
+      // Get the current game state from the database
+      const { Convo, Location } = require('../models');
+      const lastConvo = await Convo.findOne({
+        where: { 
+          player: user,
+          genre: 'Mystery'
+        },
+        order: [['id', 'DESC']]
+      });
+      
+      let currentGameState = null;
+      if (lastConvo) {
+        // Build current game state from database
+        currentGameState = {
+          Summary: lastConvo.summary || '',
+          Query: command,
+          Temp: lastConvo.temp || '5',
+          Registered: lastConvo.registered || '',
+          Name: lastConvo.name || '',
+          Gender: lastConvo.gender || '',
+          Class: lastConvo.playerClass || '',
+          Race: lastConvo.race || '',
+          Turn: lastConvo.turn || '1',
+          Time: lastConvo.timePeriod || '',
+          Day: lastConvo.dayNumber || '',
+          Weather: lastConvo.weather || '',
+          Health: lastConvo.health || '',
+          Gold: lastConvo.gold || '',
+          XP: lastConvo.xp || '',
+          AC: lastConvo.ac || '',
+          Level: lastConvo.level || '',
+          Description: lastConvo.description || '',
+          Quest: lastConvo.quest || '',
+          Location: lastConvo.location || '',
+          Exits: {},  // Will be populated from location lookup
+          Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
+          Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
+          Genre: 'Mystery'
+        };
+        
+        // Look up exit information from location table
+        if (currentGameState.Location) {
+          console.log(`🗺️ Looking up exits for location: ${currentGameState.Location}`);
+          const locationData = await Location.findOne({
+            where: {
+              name: currentGameState.Location,
+              player: user,
+              genre: 'Mystery'
+            }
+          });
+          
+          if (locationData && locationData.exits) {
+            try {
+              currentGameState.Exits = JSON.parse(locationData.exits);
+              console.log('✅ Found exits:', currentGameState.Exits);
+            } catch (error) {
+              console.error('❌ Error parsing exits JSON:', error);
+              currentGameState.Exits = {};
+            }
+          } else {
+            console.log('⚠️ No exit data found for location');
+          }
+        }
+      }
+      
+      // Build system message with current game state appended
+      let systemContent = instructions;
+      if (currentGameState) {
+        systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
+      }
+      
+      // Add available quests to system context
+      if (availableQuests && availableQuests.length > 0) {
+        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
+        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
+        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      }
+      
+      // Build the request messages
+      const messages = [
+        {
+          role: 'system',
+          content: systemContent
+        }
+      ];
+      
+      // Add current user command
+      messages.push({
+        role: 'user',
+        content: command
+      });
+      
+      console.log('🚀 Sending request to OpenAI...');
+      console.log('📋 FULL OPENAI REQUEST:');
+      console.log('='.repeat(80));
+      const fullRequest = {
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      };
+      console.log(JSON.stringify(fullRequest, null, 2));
+      console.log('='.repeat(80));
+      
+      // Send to OpenAI
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+      
+      const aiResponse = response.choices[0].message.content;
+      console.log('📨 Received response from OpenAI');
+      console.log('Response length:', aiResponse.length);
+      console.log('🤖 FULL AI RESPONSE:');
+      console.log('='.repeat(80));
+      console.log(aiResponse);
+      console.log('='.repeat(80));
+      
+      let gameState = null;
+      let narrative = '';
+      
+      // Try to parse the entire response as JSON first
+      try {
+        gameState = JSON.parse(aiResponse.trim());
+        console.log('✅ Successfully parsed entire response as JSON');
+        
+        // Use the Description field as the narrative for the player
+        narrative = gameState.Description || 'You continue your mystery investigation...';
+        console.log('📖 Using Description field as narrative');
+        
+      } catch (error) {
+        console.log('⚠️ Response is not pure JSON, trying to extract JSON from text...');
+        
+        // Fallback to old method: extract JSON from mixed text response
+        const gameStateJson = this.extractJson(aiResponse);
+        
+        if (gameStateJson) {
+          try {
+            gameState = JSON.parse(gameStateJson);
+            console.log('✅ Successfully parsed extracted game state JSON');
+            
+            // Remove JSON from narrative response and use remaining text
+            narrative = aiResponse.replace(gameStateJson, '').trim();
+            
+          } catch (parseError) {
+            console.error('❌ Failed to parse extracted game state JSON:', parseError);
+            narrative = aiResponse.trim();
+          }
+        } else {
+          console.log('⚠️ No JSON found in response');
+          narrative = aiResponse.trim();
+        }
+      }
+      
+      return {
+        narrative: narrative,
+        gameState: gameState,
+        rawResponse: aiResponse
+      };
+      
+    } catch (error) {
+      console.error('❌ Error in processMysteryGame:', error);
+      throw error;
+    }
+  }
+
   // Main game processing function
   async processGameTurn(user, messages, command, gameType = 'adventure') {
     try {
@@ -427,6 +970,32 @@ Keep your narrative response concise and engaging.`;
       const defaultStartLocation = getDefaultStartLocation(gameType);
       let currentLocation = lastGameState.Location || defaultStartLocation;
       const currentGenre = lastGameState.Genre || this.mapGameTypeToGenre(gameType);
+      
+      // IMPORTANT: Check if the player is trying to move to a new location
+      // If so, update the current location BEFORE building context
+      const directionPattern = /^(go|move|walk|travel|head)\s+(north|south|east|west|up|down|n|s|e|w)$/i;
+      const simpleDirectionPattern = /^(north|south|east|west|up|down|n|s|e|w)$/i;
+      const directionMatch = command.match(directionPattern) || command.match(simpleDirectionPattern);
+      
+      if (directionMatch) {
+        // Player is trying to move - get current location data first
+        let currentLocationData = await this.getLocationData(currentLocation, user, currentGenre);
+        
+        if (currentLocationData && currentLocationData.exits) {
+          const direction = (directionMatch[2] || directionMatch[1]).toLowerCase();
+          const directionMap = { 'n': 'north', 's': 'south', 'e': 'east', 'w': 'west' };
+          const normalizedDirection = directionMap[direction] || direction;
+          const destinationName = currentLocationData.exits[normalizedDirection];
+          
+          if (destinationName) {
+            console.log(`🗺️ Player moving ${normalizedDirection} from "${currentLocation}" to "${destinationName}"`);
+            // Update current location to the destination for context
+            currentLocation = destinationName;
+            console.log(`🗺️ Updated context location to: "${currentLocation}"`);
+          }
+        }
+      }
+      
       let locationData = await this.getLocationData(currentLocation, user, currentGenre);
       
       // If the expected starting location doesn't exist, find the first available location for this player/genre
@@ -492,36 +1061,13 @@ Description: ${locationData.description}`;
       contextContent += this.buildCleanGameStateJson(currentGameState);
       
       
-      // Detect direction commands and look up destination location data
+      // For movement commands, add context about the move from previous location
       let userContent = command;
-      const directionPattern = /^(go|move|walk|travel|head)\s+(north|south|east|west|up|down|n|s|e|w)$/i;
-      const simpleDirectionPattern = /^(north|south|east|west|up|down|n|s|e|w)$/i;
-      
-      const directionMatch = command.match(directionPattern) || command.match(simpleDirectionPattern);
-      
-      if (directionMatch && locationData && locationData.exits) {
-        // Extract direction - for simple commands it's index 1, for complex it's index 2
-        const direction = (directionMatch[2] || directionMatch[1]).toLowerCase();
-        // Normalize short directions
-        const directionMap = { 'n': 'north', 's': 'south', 'e': 'east', 'w': 'west' };
-        const normalizedDirection = directionMap[direction] || direction;
-        
-        const destinationName = locationData.exits[normalizedDirection];
-        
-        if (destinationName) {
-          console.log(`🗺️ Player moving ${normalizedDirection} to: ${destinationName}`);
-          
-          // Look up destination location data
-          const destinationData = await this.getLocationData(destinationName, user, currentGenre);
-          
-          if (destinationData) {
-            console.log(`✅ Found destination data for: ${destinationName}`);
-            userContent = `${command}\n\nDESTINATION LOCATION DATA:\nName: ${destinationData.name}\nDescription: ${destinationData.description}\nExits: ${JSON.stringify(destinationData.exits)}`;
-          } else {
-            console.log(`❌ No destination data found for: ${destinationName}`);
-          }
-        } else {
-          console.log(`❌ No exit found in direction: ${normalizedDirection}`);
+      if (directionMatch) {
+        const previousLocation = lastGameState.Location || defaultStartLocation;
+        if (previousLocation !== currentLocation) {
+          console.log(`📍 Movement context: ${previousLocation} -> ${currentLocation}`);
+          userContent = `${command}\n\nMOVEMENT CONTEXT:\nMoving from: ${previousLocation}\nDestination: ${currentLocation}`;
         }
       }
 
@@ -1013,6 +1559,134 @@ Description: ${locationData.description}`;
         writer.on('error', reject);
       });
     } catch (error) {
+      throw error;
+    }
+  }
+
+  async generateQuests(username, gameType, worldData) {
+    try {
+      console.log('\n🎯 =============== GENERATING QUESTS ===============');
+      console.log(`Generating quests for player: ${username}`);
+      console.log(`Game type: ${gameType}`);
+      console.log(`World data type: ${typeof worldData}`);
+      console.log(`World data length: ${Array.isArray(worldData) ? worldData.length : 'N/A'}`);
+      if (Array.isArray(worldData) && worldData.length > 0) {
+        console.log(`First location sample:`, JSON.stringify(worldData[0], null, 2));
+      }
+
+      const fs = require('fs').promises;
+      const path = require('path');
+
+      // Map game type to quest instruction file
+      const questFileMap = {
+        'adventure': 'quests_adv.txt',
+        'scifi': 'quests_sci.txt', 
+        'mystery': 'quests_mys.txt',
+        'custom': 'quests_cus.txt'
+      };
+
+      const questFile = questFileMap[gameType] || 'quests_adv.txt';
+      const questPromptPath = path.join(__dirname, '..', 'instructions', questFile);
+
+      // Read the quest prompt file
+      let questPrompt;
+      try {
+        console.log(`🎯 Reading quest prompt file: ${questPromptPath}`);
+        questPrompt = await fs.readFile(questPromptPath, 'utf-8');
+        console.log(`🎯 Successfully read quest prompt (${questPrompt.length} characters)`);
+      } catch (fileError) {
+        console.error(`❌ Could not read quest prompt file: ${questFile}`);
+        console.error(`❌ File error:`, fileError);
+        throw new Error(`Quest prompt file not found: ${questFile}`);
+      }
+
+      // Replace {insert_world_json} with actual world data
+      const worldJson = JSON.stringify(worldData, null, 2);
+      console.log(`🎯 World JSON length: ${worldJson.length}`);
+      const finalPrompt = questPrompt.replace('{insert_world_json}', worldJson);
+      console.log(`🎯 Final prompt length: ${finalPrompt.length}`);
+      console.log(`🎯 Final prompt preview (first 500 chars):`, finalPrompt.substring(0, 500));
+
+      console.log('🎯 Sending quest generation request to OpenAI...');
+      
+      let response;
+      try {
+        response = await this.client.chat.completions.create({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'user',
+              content: finalPrompt
+            }
+          ],
+          max_tokens: 4000,
+          temperature: 0.8
+        });
+        console.log('🎯 Received quest response from OpenAI');
+      } catch (openaiError) {
+        console.error('❌ OpenAI API call failed:', openaiError);
+        throw new Error(`OpenAI request failed: ${openaiError.message}`);
+      }
+
+      const questResponse = response.choices[0].message.content;
+      console.log('🎯 Quest response length:', questResponse.length);
+      console.log('🎯 Quest response preview:', questResponse.substring(0, 300));
+
+      // Parse the JSON response to extract quests
+      let quests = [];
+      try {
+        let jsonStr = questResponse.trim();
+        
+        // Handle markdown formatting
+        const jsonMatch = questResponse.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+        
+        // Try to find a complete JSON array even if response is truncated
+        const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          jsonStr = arrayMatch[0];
+        }
+        
+        // If the JSON appears truncated, try to complete it
+        if (jsonStr.endsWith(',') || jsonStr.match(/,\s*$/)) {
+          // Remove trailing comma and close the array
+          jsonStr = jsonStr.replace(/,\s*$/, '') + '\n]';
+        } else if (!jsonStr.endsWith(']') && !jsonStr.endsWith('}')) {
+          // Try to close incomplete objects/arrays
+          const openBraces = (jsonStr.match(/\{/g) || []).length;
+          const closeBraces = (jsonStr.match(/\}/g) || []).length;
+          const openBrackets = (jsonStr.match(/\[/g) || []).length;
+          const closeBrackets = (jsonStr.match(/\]/g) || []).length;
+          
+          // Add missing closing braces and brackets
+          for (let i = 0; i < openBraces - closeBraces; i++) {
+            jsonStr += '\n    }';
+          }
+          for (let i = 0; i < openBrackets - closeBrackets; i++) {
+            jsonStr += '\n  ]';
+          }
+        }
+
+        console.log('🎯 Attempting to parse cleaned JSON:', jsonStr.substring(0, 200) + '...');
+        quests = JSON.parse(jsonStr);
+
+        console.log(`🎯 Successfully parsed ${quests.length} quests`);
+        return quests;
+
+      } catch (parseError) {
+        console.error('❌ Failed to parse quest JSON:', parseError);
+        console.error('❌ Raw response length:', questResponse.length);
+        console.error('❌ Raw response:', questResponse.substring(0, 1000));
+        
+        // Return empty array instead of failing completely
+        console.log('⚠️ Returning empty quest array due to parse failure');
+        return [];
+      }
+
+    } catch (error) {
+      console.error('❌ Quest generation failed:', error);
       throw error;
     }
   }

@@ -1,12 +1,115 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { authenticateUser } = require('../middleware/auth');
-const { Convo, Picmap, Location } = require('../models');
+const { Convo, Picmap, Location, Quest } = require('../models');
 const db = require('../models');
 const openaiService = require('../services/openaiService');
 const { Op } = require('sequelize');
 
 const router = express.Router();
+
+// Simplified fantasy-only game endpoint
+router.post('/fantasy-game', authenticateUser, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const { command } = req.body;
+    
+    if (!command) {
+      return res.status(400).json({ error: 'Command is required' });
+    }
+    
+    console.log(`🎮 Fantasy game command from ${username}: ${command}`);
+    
+    // Get the most recent game state from database
+    const lastConvo = await Convo.findOne({
+      where: { 
+        player: username,
+        genre: 'fantasy D&D'
+      },
+      order: [['id', 'DESC']]
+    });
+    
+    let previousGameState = null;
+    if (lastConvo) {
+      // Reconstruct game state from database record
+      previousGameState = {
+        Summary: lastConvo.summary || '',
+        Query: command, // Store the current command
+        Temp: lastConvo.temp || '5',
+        Registered: lastConvo.registered || '',
+        Name: lastConvo.name || '',
+        Gender: lastConvo.gender || '',
+        Class: lastConvo.playerClass || '',
+        Race: lastConvo.race || '',
+        Turn: lastConvo.turn || '1',
+        Time: lastConvo.timePeriod || '',
+        Day: lastConvo.dayNumber || '',
+        Weather: lastConvo.weather || '',
+        Health: lastConvo.health || '',
+        Gold: lastConvo.gold || '',
+        XP: lastConvo.xp || '',
+        AC: lastConvo.ac || '',
+        Level: lastConvo.level || '',
+        Description: lastConvo.description || '',
+        Quest: lastConvo.quest || '',
+        Location: lastConvo.location || '',
+        Exits: {}, // Exits will come from location database or AI response
+        Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
+        Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
+        Genre: 'fantasy D&D'
+      };
+    }
+    
+    // Process the game turn
+    const result = await openaiService.processFantasyGame(username, command, previousGameState);
+    
+    // Save the new game state to database
+    if (result.gameState) {
+      const newConvo = await Convo.create({
+        player: username,
+        datetime: new Date(),
+        summary: result.gameState.Summary || '',
+        query: command,
+        temp: result.gameState.Temp || '5',
+        registered: result.gameState.Registered || '',
+        name: result.gameState.Name || '',
+        gender: result.gameState.Gender || '',
+        playerClass: result.gameState.Class || '',
+        race: result.gameState.Race || '',
+        turn: result.gameState.Turn || '1',
+        timePeriod: result.gameState.Time || '',
+        dayNumber: result.gameState.Day || '',
+        weather: result.gameState.Weather || '',
+        health: result.gameState.Health || '',
+        gold: result.gameState.Gold || '',
+        xp: result.gameState.XP || '',
+        ac: result.gameState.AC || '',
+        level: result.gameState.Level || '',
+        description: result.gameState.Description || '',
+        quest: result.gameState.Quest || '',
+        location: result.gameState.Location || '',
+        inventory: JSON.stringify(result.gameState.Inventory || []),
+        stats: JSON.stringify(result.gameState.Stats || {}),
+        genre: 'fantasy D&D',
+        action: result.narrative,
+        conversation: result.rawResponse
+      });
+      
+      console.log('✅ Saved game state to database:', newConvo.id);
+    }
+    
+    // Return simplified response
+    res.json({
+      narrative: result.narrative,
+      gameState: result.gameState,
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('❌ Fantasy game error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Function to generate and populate world locations
 async function generateWorldLocations(username, genre = 'fantasy D&D', customWorldData = null) {
@@ -128,6 +231,39 @@ async function generateWorldLocations(username, genre = 'fantasy D&D', customWor
       });
       console.log(`✅ Verification: Found ${verifyCount} locations in database`);
       
+      // Generate quests after world creation
+      try {
+        console.log('🎯 Starting quest generation...');
+        const quests = await openaiService.generateQuests(username, gameType, locations);
+        
+        // Save quests to database
+        const questRecords = quests.map(quest => ({
+          title: quest.title,
+          description: quest.description,
+          starting_location: quest.starting_location,
+          related_locations: JSON.stringify(quest.related_locations || []),
+          required_items: JSON.stringify(quest.required_items || []),
+          success_condition: quest.success_condition,
+          xp_reward: quest.xp_reward || 100,
+          player: username,
+          genre: genre,
+          status: 'available'
+        }));
+
+        const insertedQuests = await Quest.bulkCreate(questRecords, {
+          validate: true,
+          ignoreDuplicates: true
+        });
+
+        console.log(`✅ Successfully created ${insertedQuests.length} quest records`);
+      } catch (questError) {
+        console.error('❌ Quest generation failed:', questError);
+        console.error('❌ Quest error stack:', questError.stack);
+        console.error('❌ Quest error message:', questError.message);
+        // Don't fail the entire world generation if quests fail
+        console.log('⚠️ Continuing without quests - world generation still successful');
+      }
+      
       console.log('🌍 ===== WORLD GENERATION COMPLETE =====\n');
       return insertedLocations.length;
     } catch (insertError) {
@@ -150,7 +286,7 @@ router.post('/adv-api', authenticateUser, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { input_text: inputData, mylocation = 'start' } = req.body;
+    let { input_text: inputData, mylocation = 'start' } = req.body;
     const username = req.user.username; // Get username from authenticated user
 
     // Check if starting new game
@@ -183,15 +319,30 @@ router.post('/adv-api', authenticateUser, [
       where: { player: username, genre: 'fantasy D&D' }
     });
     
-    if (savedData.length === 0 || existingLocations === 0) {
-      console.log(`🌍 Adventure world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+    // Only generate world if no locations exist (world generation is only needed once)
+    if (existingLocations === 0) {
+      console.log(`🌍 Adventure world needed for ${username} (locations: ${existingLocations})`);
+      
       try {
+        // Perform world generation synchronously
         await generateWorldLocations(username, 'fantasy D&D');
         console.log('✅ Adventure world generation completed successfully');
+        
+        // After world generation, automatically execute "look around" command
+        console.log('🎮 Auto-executing look around command after world generation');
+        inputData = 'look around';
+        mylocation = 'start';
+        
       } catch (worldGenError) {
         console.error('❌ Adventure world generation failed:', worldGenError);
         console.error('❌ Stack trace:', worldGenError.stack);
-        // Don't fail the request if world generation fails, but log the full error
+        
+        // Return error response if world generation fails
+        return res.status(500).json({
+          success: false,
+          error: 'World generation failed. Please try again.',
+          content: 'Error: World generation failed.'
+        });
       }
     }
 
@@ -217,49 +368,97 @@ router.post('/adv-api', authenticateUser, [
     } catch (error) {
     }
 
-    // Process the game turn
-    const responseData = await openaiService.processGameTurn(
-      username, 
-      messages, 
-      inputData,
-      'adventure'
-    );
-
-    // Save conversation to database using deconstructed data
-    if (responseData.data && inputData.trim()) {
-      const savedRecord = await Convo.create({
-        player: username,
-        contentUser: inputData,
-        contentAssistant: responseData.content,
-        summary: responseData.data.summary || '',
-        action: responseData.data.action || responseData.content,
-        genre: responseData.data.genre || 'fantasy D&D',
-        query: responseData.data.query || '',
-        temp: responseData.data.temp || '5',
-        name: responseData.data.name || '',
-        playerClass: responseData.data.playerClass || '',
-        race: responseData.data.race || '',
-        turn: responseData.data.turn || '1',
-        timePeriod: responseData.data.timePeriod || '',
-        dayNumber: responseData.data.dayNumber || '1',
-        weather: responseData.data.weather || '',
-        health: responseData.data.health || '',
-        xp: responseData.data.xp || '0',
-        ac: responseData.data.ac || '10',
-        level: responseData.data.level || '1',
-        description: responseData.data.description || '',
-        location: responseData.data.location || '',
-        inventory: responseData.data.inventory || '',
-        quest: responseData.data.quest || '',
-        gender: responseData.data.gender || '',
-        registered: responseData.data.registered || '',
-        stats: responseData.data.stats || '',
-        gold: responseData.data.gold || '0',
-        conversation: responseData.rawResponse || ''
+    // Load available quests for this player
+    let availableQuests = [];
+    try {
+      const quests = await Quest.findAll({
+        where: { 
+          player: username, 
+          genre: 'fantasy D&D',
+          status: 'available'
+        },
+        order: [['id', 'ASC']],
+        raw: true
       });
+
+      availableQuests = quests.map(quest => ({
+        title: quest.title,
+        description: quest.description,
+        starting_location: quest.starting_location,
+        related_locations: JSON.parse(quest.related_locations || '[]'),
+        required_items: JSON.parse(quest.required_items || '[]'),
+        success_condition: quest.success_condition,
+        xp_reward: quest.xp_reward
+      }));
+
+      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+    } catch (questError) {
+      console.error('❌ Failed to load quests:', questError);
     }
 
-    res.json(responseData);
+    // Use the simplified fantasy game processing
+    const result = await openaiService.processFantasyGame(username, inputData, null, availableQuests);
+
+    // Save the new game state to database
+    if (result.gameState) {
+      await Convo.create({
+        player: username,
+        datetime: new Date(),
+        summary: result.gameState.Summary || '',
+        query: inputData,
+        temp: result.gameState.Temp || '5',
+        registered: result.gameState.Registered || '',
+        name: result.gameState.Name || '',
+        gender: result.gameState.Gender || '',
+        playerClass: result.gameState.Class || '',
+        race: result.gameState.Race || '',
+        turn: result.gameState.Turn || '1',
+        timePeriod: result.gameState.Time || '',
+        dayNumber: result.gameState.Day || '',
+        weather: result.gameState.Weather || '',
+        health: result.gameState.Health || '',
+        gold: result.gameState.Gold || '',
+        xp: result.gameState.XP || '',
+        ac: result.gameState.AC || '',
+        level: result.gameState.Level || '',
+        description: result.gameState.Description || '',
+        quest: result.gameState.Quest || '',
+        location: result.gameState.Location || '',
+        inventory: JSON.stringify(result.gameState.Inventory || []),
+        stats: JSON.stringify(result.gameState.Stats || {}),
+        genre: 'fantasy D&D',
+        action: result.narrative,
+        conversation: result.rawResponse
+      });
+      
+      console.log('✅ Saved adventure game state to database');
+      
+      // Update location description if we have location and description data
+      if (result.gameState.Location && result.gameState.Description) {
+        try {
+          await Location.update(
+            { description: result.gameState.Description },
+            {
+              where: {
+                name: result.gameState.Location,
+                player: username,
+                genre: 'fantasy D&D'
+              }
+            }
+          );
+          console.log(`📍 Updated location description for: ${result.gameState.Location}`);
+        } catch (locationError) {
+          console.error('❌ Failed to update location description:', locationError);
+        }
+      }
+    }
+
+    // Return response in the format expected by existing frontend
+    res.json({
+      content: result.narrative,
+      data: result.gameState,
+      rawResponse: result.rawResponse
+    });
   } catch (error) {
     console.error('❌ Adventure API error:', error);
     console.error('❌ Stack trace:', error.stack);
@@ -278,7 +477,7 @@ router.post('/mys-api', authenticateUser, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { input_text: inputData, mylocation = 'start' } = req.body;
+    let { input_text: inputData, mylocation = 'start' } = req.body;
     const username = req.user.username; // Get username from authenticated user
 
     // Same logic as adventure but with mystery game type
@@ -308,13 +507,30 @@ router.post('/mys-api', authenticateUser, [
       where: { player: username, genre: 'Mystery' }
     });
     
-    if (savedData.length === 0 || existingLocations === 0) {
-      console.log(`🌍 Mystery world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+    // Only generate world if no locations exist (world generation is only needed once)
+    if (existingLocations === 0) {
+      console.log(`🌍 Mystery world needed for ${username} (locations: ${existingLocations})`);
+      
       try {
+        // Perform world generation synchronously
         await generateWorldLocations(username, 'Mystery');
+        console.log('✅ Mystery world generation completed successfully');
+        
+        // After world generation, automatically execute "look around" command
+        console.log('🎮 Auto-executing look around command after world generation');
+        inputData = 'look around';
+        mylocation = 'start';
+        
       } catch (worldGenError) {
-        console.error('❌ Mystery world generation failed, continuing without world:', worldGenError);
-        // Don't fail the request if world generation fails
+        console.error('❌ Mystery world generation failed:', worldGenError);
+        console.error('❌ Stack trace:', worldGenError.stack);
+        
+        // Return error response if world generation fails
+        return res.status(500).json({
+          success: false,
+          error: 'World generation failed. Please try again.',
+          content: 'Error: World generation failed.'
+        });
       }
     }
 
@@ -339,48 +555,97 @@ router.post('/mys-api', authenticateUser, [
     } catch (error) {
     }
 
-    const responseData = await openaiService.processGameTurn(
-      username, 
-      messages, 
-      inputData,
-      'mystery'
-    );
-
-    if (responseData.data && inputData.trim()) {
-      
-      const savedRecord = await Convo.create({
-        player: username,
-        contentUser: inputData,
-        contentAssistant: responseData.content,
-        summary: responseData.data.summary || '',
-        action: responseData.data.action || responseData.content,
-        genre: responseData.data.genre || 'Mystery',
-        query: responseData.data.query || '',
-        temp: responseData.data.temp || '5',
-        name: responseData.data.name || '',
-        playerClass: responseData.data.playerClass || '',
-        race: responseData.data.race || '',
-        turn: responseData.data.turn || '1',
-        timePeriod: responseData.data.timePeriod || '',
-        dayNumber: responseData.data.dayNumber || '1',
-        weather: responseData.data.weather || '',
-        health: responseData.data.health || '',
-        xp: responseData.data.xp || '0',
-        ac: responseData.data.ac || '10',
-        level: responseData.data.level || '1',
-        description: responseData.data.description || '',
-        location: responseData.data.location || '',
-        inventory: responseData.data.inventory || '',
-        quest: responseData.data.quest || '',
-        gender: responseData.data.gender || '',
-        registered: responseData.data.registered || '',
-        stats: responseData.data.stats || '',
-        gold: responseData.data.gold || '0',
-        conversation: responseData.rawResponse || ''
+    // Load available quests for this player
+    let availableQuests = [];
+    try {
+      const quests = await Quest.findAll({
+        where: { 
+          player: username, 
+          genre: 'Mystery',
+          status: 'available'
+        },
+        order: [['id', 'ASC']],
+        raw: true
       });
+
+      availableQuests = quests.map(quest => ({
+        title: quest.title,
+        description: quest.description,
+        starting_location: quest.starting_location,
+        related_locations: JSON.parse(quest.related_locations || '[]'),
+        required_items: JSON.parse(quest.required_items || '[]'),
+        success_condition: quest.success_condition,
+        xp_reward: quest.xp_reward
+      }));
+
+      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+    } catch (questError) {
+      console.error('❌ Failed to load quests:', questError);
     }
 
-    res.json(responseData);
+    // Use the simplified mystery game processing
+    const result = await openaiService.processMysteryGame(username, inputData, null, availableQuests);
+
+    // Save the new game state to database
+    if (result.gameState) {
+      await Convo.create({
+        player: username,
+        datetime: new Date(),
+        summary: result.gameState.Summary || '',
+        query: inputData,
+        temp: result.gameState.Temp || '5',
+        registered: result.gameState.Registered || '',
+        name: result.gameState.Name || '',
+        gender: result.gameState.Gender || '',
+        playerClass: result.gameState.Class || '',
+        race: result.gameState.Race || '',
+        turn: result.gameState.Turn || '1',
+        timePeriod: result.gameState.Time || '',
+        dayNumber: result.gameState.Day || '',
+        weather: result.gameState.Weather || '',
+        health: result.gameState.Health || '',
+        gold: result.gameState.Gold || '',
+        xp: result.gameState.XP || '',
+        ac: result.gameState.AC || '',
+        level: result.gameState.Level || '',
+        description: result.gameState.Description || '',
+        quest: result.gameState.Quest || '',
+        location: result.gameState.Location || '',
+        inventory: JSON.stringify(result.gameState.Inventory || []),
+        stats: JSON.stringify(result.gameState.Stats || {}),
+        genre: 'Mystery',
+        action: result.narrative,
+        conversation: result.rawResponse
+      });
+      
+      console.log('✅ Saved mystery game state to database');
+      
+      // Update location description if we have location and description data
+      if (result.gameState.Location && result.gameState.Description) {
+        try {
+          await Location.update(
+            { description: result.gameState.Description },
+            {
+              where: {
+                name: result.gameState.Location,
+                player: username,
+                genre: 'Mystery'
+              }
+            }
+          );
+          console.log(`📍 Updated location description for: ${result.gameState.Location}`);
+        } catch (locationError) {
+          console.error('❌ Failed to update location description:', locationError);
+        }
+      }
+    }
+
+    // Return response in the format expected by existing frontend
+    res.json({
+      content: result.narrative,
+      data: result.gameState,
+      rawResponse: result.rawResponse
+    });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -396,7 +661,7 @@ router.post('/sci-api', authenticateUser, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { input_text: inputData, mylocation = 'start' } = req.body;
+    let { input_text: inputData, mylocation = 'start' } = req.body;
     const username = req.user.username; // Get username from authenticated user
 
     if (inputData.toLowerCase().includes('start a new game')) {
@@ -425,13 +690,30 @@ router.post('/sci-api', authenticateUser, [
       where: { player: username, genre: 'Science Fiction' }
     });
     
-    if (savedData.length === 0 || existingLocations === 0) {
-      console.log(`🌍 Sci-fi world needed for ${username} (conversations: ${savedData.length}, locations: ${existingLocations})`);
+    // Only generate world if no locations exist (world generation is only needed once)
+    if (existingLocations === 0) {
+      console.log(`🌍 Sci-fi world needed for ${username} (locations: ${existingLocations})`);
+      
       try {
+        // Perform world generation synchronously
         await generateWorldLocations(username, 'Science Fiction');
+        console.log('✅ Sci-fi world generation completed successfully');
+        
+        // After world generation, automatically execute "look around" command
+        console.log('🎮 Auto-executing look around command after world generation');
+        inputData = 'look around';
+        mylocation = 'start';
+        
       } catch (worldGenError) {
-        console.error('❌ Sci-fi world generation failed, continuing without world:', worldGenError);
-        // Don't fail the request if world generation fails
+        console.error('❌ Sci-fi world generation failed:', worldGenError);
+        console.error('❌ Stack trace:', worldGenError.stack);
+        
+        // Return error response if world generation fails
+        return res.status(500).json({
+          success: false,
+          error: 'World generation failed. Please try again.',
+          content: 'Error: World generation failed.'
+        });
       }
     }
 
@@ -456,48 +738,97 @@ router.post('/sci-api', authenticateUser, [
     } catch (error) {
     }
 
-    const responseData = await openaiService.processGameTurn(
-      username, 
-      messages, 
-      inputData,
-      'scifi'
-    );
-
-    if (responseData.data && inputData.trim()) {
-      
-      const savedRecord = await Convo.create({
-        player: username,
-        contentUser: inputData,
-        contentAssistant: responseData.content,
-        summary: responseData.data.summary || '',
-        action: responseData.data.action || responseData.content,
-        genre: responseData.data.genre || 'Science Fiction',
-        query: responseData.data.query || '',
-        temp: responseData.data.temp || '5',
-        name: responseData.data.name || '',
-        playerClass: responseData.data.playerClass || '',
-        race: responseData.data.race || '',
-        turn: responseData.data.turn || '1',
-        timePeriod: responseData.data.timePeriod || '',
-        dayNumber: responseData.data.dayNumber || '1',
-        weather: responseData.data.weather || '',
-        health: responseData.data.health || '',
-        xp: responseData.data.xp || '0',
-        ac: responseData.data.ac || '10',
-        level: responseData.data.level || '1',
-        description: responseData.data.description || '',
-        location: responseData.data.location || '',
-        inventory: responseData.data.inventory || '',
-        quest: responseData.data.quest || '',
-        gender: responseData.data.gender || '',
-        registered: responseData.data.registered || '',
-        stats: responseData.data.stats || '',
-        gold: responseData.data.gold || '0',
-        conversation: responseData.rawResponse || ''
+    // Load available quests for this player
+    let availableQuests = [];
+    try {
+      const quests = await Quest.findAll({
+        where: { 
+          player: username, 
+          genre: 'Science Fiction',
+          status: 'available'
+        },
+        order: [['id', 'ASC']],
+        raw: true
       });
+
+      availableQuests = quests.map(quest => ({
+        title: quest.title,
+        description: quest.description,
+        starting_location: quest.starting_location,
+        related_locations: JSON.parse(quest.related_locations || '[]'),
+        required_items: JSON.parse(quest.required_items || '[]'),
+        success_condition: quest.success_condition,
+        xp_reward: quest.xp_reward
+      }));
+
+      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+    } catch (questError) {
+      console.error('❌ Failed to load quests:', questError);
     }
 
-    res.json(responseData);
+    // Use the simplified sci-fi game processing
+    const result = await openaiService.processScifiGame(username, inputData, null, availableQuests);
+
+    // Save the new game state to database
+    if (result.gameState) {
+      await Convo.create({
+        player: username,
+        datetime: new Date(),
+        summary: result.gameState.Summary || '',
+        query: inputData,
+        temp: result.gameState.Temp || '5',
+        registered: result.gameState.Registered || '',
+        name: result.gameState.Name || '',
+        gender: result.gameState.Gender || '',
+        playerClass: result.gameState.Class || '',
+        race: result.gameState.Race || '',
+        turn: result.gameState.Turn || '1',
+        timePeriod: result.gameState.Time || '',
+        dayNumber: result.gameState.Day || '',
+        weather: result.gameState.Weather || '',
+        health: result.gameState.Health || '',
+        gold: result.gameState.Gold || '',
+        xp: result.gameState.XP || '',
+        ac: result.gameState.AC || '',
+        level: result.gameState.Level || '',
+        description: result.gameState.Description || '',
+        quest: result.gameState.Quest || '',
+        location: result.gameState.Location || '',
+        inventory: JSON.stringify(result.gameState.Inventory || []),
+        stats: JSON.stringify(result.gameState.Stats || {}),
+        genre: 'Science Fiction',
+        action: result.narrative,
+        conversation: result.rawResponse
+      });
+      
+      console.log('✅ Saved sci-fi game state to database');
+      
+      // Update location description if we have location and description data
+      if (result.gameState.Location && result.gameState.Description) {
+        try {
+          await Location.update(
+            { description: result.gameState.Description },
+            {
+              where: {
+                name: result.gameState.Location,
+                player: username,
+                genre: 'Science Fiction'
+              }
+            }
+          );
+          console.log(`📍 Updated location description for: ${result.gameState.Location}`);
+        } catch (locationError) {
+          console.error('❌ Failed to update location description:', locationError);
+        }
+      }
+    }
+
+    // Return response in the format expected by existing frontend
+    res.json({
+      content: result.narrative,
+      data: result.gameState,
+      rawResponse: result.rawResponse
+    });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -513,7 +844,7 @@ router.post('/custom-api', authenticateUser, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { input_text: inputData, mylocation = 'start' } = req.body;
+    let { input_text: inputData, mylocation = 'start' } = req.body;
     const username = req.user.username; // Get username from authenticated user
 
     if (inputData.toLowerCase().includes('start a new game')) {

@@ -500,7 +500,7 @@ Type your commands below to begin your journey...<br>
                     
                     const data = await response.json();
                     
-                    // Add AI response to terminal (with sanitization check)
+                    // Normal response handling
                     const cleanContent = this.sanitizeDisplayContent(data.content);
                     this.addToTerminal(cleanContent, 'ai-message');
                     
@@ -540,21 +540,35 @@ Type your commands below to begin your journey...<br>
             updateGameStats(data) {
                 console.log('🎮 updateGameStats called with data:', data);
                 
+                // Handle both old structure and new JSON game state structure
+                const gameState = data;
+                
+                // Store the game state for use by other methods
+                this.lastGameState = gameState;
+                
+                // Handle inventory array formatting
+                let inventoryText = '-';
+                if (gameState.Inventory && Array.isArray(gameState.Inventory) && gameState.Inventory.length > 0) {
+                    inventoryText = gameState.Inventory.join(', ');
+                } else if (gameState.inventory && Array.isArray(gameState.inventory) && gameState.inventory.length > 0) {
+                    inventoryText = gameState.inventory.join(', ');
+                }
+                
                 const updates = {
-                    playerName: data.name,
-                    playerClass: data.playerClass,
-                    playerRace: data.race,
-                    playerLevel: data.level,
-                    playerHealth: data.health,
-                    playerXP: data.xp,
-                    playerAC: data.ac,
-                    playerGold: data.gold,
-                    currentLocation: data.location,
-                    currentWeather: data.weather,
-                    currentTime: data.timePeriod,
-                    currentDay: data.dayNumber,
-                    currentQuest: data.quest,
-                    playerInventory: data.inventory
+                    playerName: gameState.Name || gameState.name || '-',
+                    playerClass: gameState.Class || gameState.playerClass || '-',
+                    playerRace: gameState.Race || gameState.race || '-',
+                    playerLevel: gameState.Level || gameState.level || '-',
+                    playerHealth: gameState.Health || gameState.health || '-',
+                    playerXP: gameState.XP || gameState.xp || '-',
+                    playerAC: gameState.AC || gameState.ac || '-',
+                    playerGold: gameState.Gold || gameState.gold || '-',
+                    playerInventory: inventoryText,
+                    currentLocation: gameState.Location || gameState.location || '-',
+                    currentWeather: gameState.Weather || gameState.weather || '-',
+                    currentTime: gameState.Time || gameState.timePeriod || '-',
+                    currentDay: gameState.Day || gameState.dayNumber || '-',
+                    currentQuest: gameState.Quest || gameState.quest || '-'
                 };
                 
                 console.log('🎮 Updates to apply:', updates);
@@ -562,13 +576,13 @@ Type your commands below to begin your journey...<br>
                 Object.entries(updates).forEach(([id, value]) => {
                     const element = document.getElementById(id);
                     if (element) {
-                        if (value) {
+                        if (value && value !== '-') {
                             element.textContent = value;
                             console.log(`✅ Updated ${id} with: ${value}`);
                         } else {
                             console.log(`⚠️ No value for ${id}, keeping current: ${element.textContent}`);
                         }
-                        if (id === 'currentLocation' && value) {
+                        if (id === 'currentLocation' && value && value !== '-') {
                             this.currentLocation = value;
                             this.loadLocationImage(value);
                         }
@@ -577,12 +591,13 @@ Type your commands below to begin your journey...<br>
                     }
                 });
                 
-                // Update exits display - now get from locations DB
-                console.log('🎯 About to update exits for location:', data.location);
-                if (data.location) {
-                    this.updateExitsFromLocation(data.location);
+                // Always update exits from database location lookup
+                console.log('🎯 Loading exits from database location lookup');
+                const location = gameState.Location || gameState.location;
+                if (location) {
+                    this.updateExitsFromLocation(location);
                 } else {
-                    console.log('🎯 No location data found in response');
+                    console.log('🎯 No location data found, clearing exits');
                     this.updateExits('');
                 }
             }
@@ -606,7 +621,7 @@ Type your commands below to begin your journey...<br>
                     const response = await fetch(`/api/world-locations?genre=${encodeURIComponent(dbGenre)}`, {
                         method: 'GET',
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
                             'Content-Type': 'application/json'
                         }
                     });
@@ -615,10 +630,19 @@ Type your commands below to begin your journey...<br>
                         const result = await response.json();
                         console.log('🗺️ Received locations:', result);
                         
-                        // Find the current location
-                        const currentLocation = result.locations.find(loc => 
-                            loc.name.toLowerCase() === locationName.toLowerCase()
-                        );
+                        // Find the current location with robust matching
+                        const normalizeLocationName = (name) => {
+                            return name.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                        };
+                        
+                        const normalizedSearchName = normalizeLocationName(locationName);
+                        console.log('🗺️ Searching for normalized location:', normalizedSearchName);
+                        
+                        const currentLocation = result.locations.find(loc => {
+                            const normalizedDbName = normalizeLocationName(loc.name);
+                            console.log(`🗺️ Comparing "${normalizedSearchName}" with "${normalizedDbName}"`);
+                            return normalizedDbName === normalizedSearchName;
+                        });
                         
                         if (currentLocation) {
                             console.log('🗺️ Found current location:', currentLocation);
@@ -626,8 +650,27 @@ Type your commands below to begin your journey...<br>
                             console.log('🗺️ Exits for location:', exits);
                             this.updateExits(JSON.stringify(exits));
                         } else {
-                            console.log('🗺️ Location not found in database, clearing exits');
-                            this.updateExits('');
+                            console.log('🗺️ Exact location match not found, trying fuzzy matching...');
+                            // Try fuzzy matching - find location that contains key words
+                            const searchWords = normalizedSearchName.split(' ').filter(word => word.length > 2);
+                            let fuzzyMatch = null;
+                            
+                            if (searchWords.length > 0) {
+                                fuzzyMatch = result.locations.find(loc => {
+                                    const normalizedDbName = normalizeLocationName(loc.name);
+                                    return searchWords.some(word => normalizedDbName.includes(word));
+                                });
+                            }
+                            
+                            if (fuzzyMatch) {
+                                console.log('🗺️ Found fuzzy match location:', fuzzyMatch);
+                                const exits = JSON.parse(fuzzyMatch.exits || '{}');
+                                console.log('🗺️ Exits for fuzzy location:', exits);
+                                this.updateExits(JSON.stringify(exits));
+                            } else {
+                                console.log('🗺️ No location match found in database, clearing exits');
+                                this.updateExits('');
+                            }
                         }
                     } else {
                         console.error('🗺️ Failed to fetch locations:', response.status);
@@ -809,7 +852,11 @@ Type your commands below to begin your journey...<br>
             }
             
             getLocationDescription() {
-                // Get the last AI response that might contain a description
+                // Use the last stored game state description if available
+                if (this.lastGameState && this.lastGameState.Description) {
+                    return this.lastGameState.Description.substring(0, 500); // Use up to 500 chars for better image generation
+                }
+                // Fallback: Get the last AI response that might contain a description
                 const messages = this.terminal.querySelectorAll('.terminal-message.ai-message');
                 if (messages.length > 0) {
                     const lastMessage = messages[messages.length - 1];
@@ -1014,7 +1061,7 @@ Type your commands below to begin your journey...<br>
                         this.setLoading(true);
                         
                         // Add welcome message
-                        this.addToTerminal('[SYSTEM] Welcome to your adventure! Let me show you around...', 'system-message');
+                        this.addToTerminal('[SYSTEM] Welcome to your adventure! Generating world. This will take up to 2 mins. Please Wait...', 'system-message');
                         
                         // Send initial 'look around' command
                         const response = await fetch(this.apiEndpoint, {
@@ -1035,7 +1082,7 @@ Type your commands below to begin your journey...<br>
                         
                         const data = await response.json();
                         
-                        // Add AI response to terminal (with sanitization check)
+                        // Normal response handling
                         const cleanContent = this.sanitizeDisplayContent(data.content);
                         this.addToTerminal(cleanContent, 'ai-message');
                         

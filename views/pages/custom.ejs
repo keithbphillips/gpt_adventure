@@ -538,21 +538,31 @@ Enter commands to shape your unique world...<br>
             }
             
             updateGameStats(data) {
+                // Handle inventory array formatting
+                let inventoryText = '-';
+                if (data.Inventory && Array.isArray(data.Inventory) && data.Inventory.length > 0) {
+                    inventoryText = data.Inventory.join(', ');
+                } else if (data.inventory && Array.isArray(data.inventory) && data.inventory.length > 0) {
+                    inventoryText = data.inventory.join(', ');
+                } else if (data.inventory && typeof data.inventory === 'string') {
+                    inventoryText = data.inventory;
+                }
+                
                 const updates = {
-                    playerName: data.name,
-                    playerClass: data.playerClass,
-                    playerRace: data.race,
-                    playerLevel: data.level,
-                    playerHealth: data.health,
-                    playerXP: data.xp,
-                    playerAC: data.ac,
-                    playerGold: data.gold,
-                    currentLocation: data.location,
-                    currentWeather: data.weather,
-                    currentTime: data.timePeriod,
-                    currentDay: data.dayNumber,
-                    currentQuest: data.quest,
-                    playerInventory: data.inventory
+                    playerName: data.name || data.Name || '-',
+                    playerClass: data.playerClass || data.Class || '-',
+                    playerRace: data.race || data.Race || '-',
+                    playerLevel: data.level || data.Level || '-',
+                    playerHealth: data.health || data.Health || '-',
+                    playerXP: data.xp || data.XP || '-',
+                    playerAC: data.ac || data.AC || '-',
+                    playerGold: data.gold || data.Gold || '-',
+                    currentLocation: data.location || data.Location || '-',
+                    currentWeather: data.weather || data.Weather || '-',
+                    currentTime: data.timePeriod || data.Time || '-',
+                    currentDay: data.dayNumber || data.Day || '-',
+                    currentQuest: data.quest || data.Quest || '-',
+                    playerInventory: inventoryText
                 };
                 
                 Object.entries(updates).forEach(([id, value]) => {
@@ -596,7 +606,7 @@ Enter commands to shape your unique world...<br>
                     const response = await fetch(`/api/world-locations?genre=${encodeURIComponent(dbGenre)}`, {
                         method: 'GET',
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
                             'Content-Type': 'application/json'
                         }
                     });
@@ -605,10 +615,19 @@ Enter commands to shape your unique world...<br>
                         const result = await response.json();
                         console.log('🗺️ Received locations:', result);
                         
-                        // Find the current location
-                        const currentLocation = result.locations.find(loc => 
-                            loc.name.toLowerCase() === locationName.toLowerCase()
-                        );
+                        // Find the current location with robust matching
+                        const normalizeLocationName = (name) => {
+                            return name.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                        };
+                        
+                        const normalizedSearchName = normalizeLocationName(locationName);
+                        console.log('🗺️ Searching for normalized location:', normalizedSearchName);
+                        
+                        const currentLocation = result.locations.find(loc => {
+                            const normalizedDbName = normalizeLocationName(loc.name);
+                            console.log(`🗺️ Comparing "${normalizedSearchName}" with "${normalizedDbName}"`);
+                            return normalizedDbName === normalizedSearchName;
+                        });
                         
                         if (currentLocation) {
                             console.log('🗺️ Found current location:', currentLocation);

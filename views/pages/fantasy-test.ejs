@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fantasy Game Test - GPT Adventure</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #1a1a1a;
+            color: #00ff00;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .game-area {
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 400px;
+            background-color: #000;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        #commandInput {
+            flex: 1;
+            padding: 10px;
+            background-color: #000;
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            font-family: 'Courier New', monospace;
+        }
+        
+        #sendBtn {
+            padding: 10px 20px;
+            background-color: #00ff00;
+            color: #000;
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+        
+        .debug-area {
+            border: 2px solid #ff6600;
+            padding: 10px;
+            background-color: #1a1a1a;
+            color: #ff6600;
+            font-size: 12px;
+        }
+        
+        .message {
+            margin: 10px 0;
+            padding: 5px;
+        }
+        
+        .user-message {
+            color: #ffffff;
+        }
+        
+        .ai-message {
+            color: #00ff00;
+        }
+        
+        .system-message {
+            color: #ffff00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 Fantasy Game Test</h1>
+        
+        <div class="game-area" id="gameArea">
+            <div class="system-message">Fantasy Adventure Test Environment Initialized</div>
+            <div class="system-message">Type commands to interact with the game.</div>
+        </div>
+        
+        <div class="input-area">
+            <input type="text" id="commandInput" placeholder="Enter command (e.g., 'look around', 'go north')" />
+            <button id="sendBtn">Send</button>
+        </div>
+        
+        <div class="debug-area" id="debugArea">
+            <strong>Debug Info:</strong><br>
+            Ready to send commands to /api/fantasy-game
+        </div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('gameArea');
+        const commandInput = document.getElementById('commandInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const debugArea = document.getElementById('debugArea');
+        
+        function addMessage(text, type = 'ai-message') {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = text.replace(/\n/g, '<br>');
+            gameArea.appendChild(div);
+            gameArea.scrollTop = gameArea.scrollHeight;
+        }
+        
+        function updateDebug(info) {
+            debugArea.innerHTML = '<strong>Debug Info:</strong><br>' + JSON.stringify(info, null, 2);
+        }
+        
+        async function sendCommand() {
+            const command = commandInput.value.trim();
+            if (!command) return;
+            
+            addMessage(`> ${command}`, 'user-message');
+            commandInput.value = '';
+            sendBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/fantasy-game', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                    },
+                    body: JSON.stringify({ command })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    addMessage(data.narrative, 'ai-message');
+                    updateDebug({
+                        gameState: data.gameState,
+                        success: true
+                    });
+                } else {
+                    addMessage(`Error: ${data.error}`, 'system-message');
+                    updateDebug({ error: data.error });
+                }
+                
+            } catch (error) {
+                addMessage(`Network Error: ${error.message}`, 'system-message');
+                updateDebug({ networkError: error.message });
+            }
+            
+            sendBtn.disabled = false;
+        }
+        
+        commandInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendCommand();
+            }
+        });
+        
+        sendBtn.addEventListener('click', sendCommand);
+        
+        // Auto-focus on input
+        commandInput.focus();
+    </script>
+</body>
+</html>

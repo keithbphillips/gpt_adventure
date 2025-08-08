@@ -50,6 +50,14 @@ router.get('/custom', requireLogin, (req, res) => {
   });
 });
 
+// Fantasy test page
+router.get('/fantasy-test', requireLogin, (req, res) => {
+  res.render('pages/fantasy-test', { 
+    title: 'Fantasy Game Test',
+    user: req.user,
+    gameType: 'fantasy'
+  });
+});
 
 // About page
 router.get('/about', (req, res) => {

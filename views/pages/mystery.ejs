@@ -500,7 +500,7 @@ Enter commands to investigate the mystery...<br>
                     
                     const data = await response.json();
                     
-                    // Add AI response to terminal (with sanitization check)
+                    // Normal response handling
                     const cleanContent = this.sanitizeDisplayContent(data.content);
                     this.addToTerminal(cleanContent, 'ai-message');
                     
@@ -538,40 +538,63 @@ Enter commands to investigate the mystery...<br>
             }
             
             updateGameStats(data) {
+                console.log('🎮 updateGameStats called with data:', data);
+                
+                // Handle both old structure and new JSON game state structure
+                const gameState = data;
+                
+                // Handle inventory array formatting
+                let inventoryText = '-';
+                if (gameState.Inventory && Array.isArray(gameState.Inventory) && gameState.Inventory.length > 0) {
+                    inventoryText = gameState.Inventory.join(', ');
+                } else if (gameState.inventory && Array.isArray(gameState.inventory) && gameState.inventory.length > 0) {
+                    inventoryText = gameState.inventory.join(', ');
+                }
+                
                 const updates = {
-                    playerName: data.name,
-                    playerClass: data.playerClass,
-                    playerRace: data.race,
-                    playerLevel: data.level,
-                    playerHealth: data.health,
-                    playerXP: data.xp,
-                    playerAC: data.ac,
-                    playerGold: data.gold,
-                    currentLocation: data.location,
-                    currentWeather: data.weather,
-                    currentTime: data.timePeriod,
-                    currentDay: data.dayNumber,
-                    currentQuest: data.quest,
-                    playerInventory: data.inventory
+                    playerName: gameState.Name || gameState.name || '-',
+                    playerClass: gameState.Class || gameState.playerClass || '-',
+                    playerRace: gameState.Race || gameState.race || '-',
+                    playerLevel: gameState.Level || gameState.level || '-',
+                    playerHealth: gameState.Health || gameState.health || '-',
+                    playerXP: gameState.XP || gameState.xp || '-',
+                    playerAC: gameState.AC || gameState.ac || '-',
+                    playerGold: gameState.Gold || gameState.gold || '-',
+                    playerInventory: inventoryText,
+                    currentLocation: gameState.Location || gameState.location || '-',
+                    currentWeather: gameState.Weather || gameState.weather || '-',
+                    currentTime: gameState.Time || gameState.timePeriod || '-',
+                    currentDay: gameState.Day || gameState.dayNumber || '-',
+                    currentQuest: gameState.Quest || gameState.quest || '-'
                 };
+                
+                console.log('🎮 Updates to apply:', updates);
                 
                 Object.entries(updates).forEach(([id, value]) => {
                     const element = document.getElementById(id);
-                    if (element && value) {
-                        element.textContent = value;
-                        if (id === 'currentLocation') {
+                    if (element) {
+                        if (value && value !== '-') {
+                            element.textContent = value;
+                            console.log(`✅ Updated ${id} with: ${value}`);
+                        } else {
+                            console.log(`⚠️ No value for ${id}, keeping current: ${element.textContent}`);
+                        }
+                        if (id === 'currentLocation' && value && value !== '-') {
                             this.currentLocation = value;
                             this.loadLocationImage(value);
                         }
+                    } else {
+                        console.error(`❌ Element not found: ${id}`);
                     }
                 });
                 
-                // Update exits display - now get from locations DB
-                console.log('🎯 About to update exits for location:', data.location);
-                if (data.location) {
-                    this.updateExitsFromLocation(data.location);
+                // Always update exits from database location lookup
+                console.log('🎯 Loading exits from database location lookup');
+                const location = gameState.Location || gameState.location;
+                if (location) {
+                    this.updateExitsFromLocation(location);
                 } else {
-                    console.log('🎯 No location data found in response');
+                    console.log('🎯 No location data found, clearing exits');
                     this.updateExits('');
                 }
             }
@@ -596,7 +619,7 @@ Enter commands to investigate the mystery...<br>
                     const response = await fetch(`/api/world-locations?genre=${encodeURIComponent(dbGenre)}`, {
                         method: 'GET',
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`,
                             'Content-Type': 'application/json'
                         }
                     });
@@ -605,10 +628,19 @@ Enter commands to investigate the mystery...<br>
                         const result = await response.json();
                         console.log('🗺️ Received locations:', result);
                         
-                        // Find the current location
-                        const currentLocation = result.locations.find(loc => 
-                            loc.name.toLowerCase() === locationName.toLowerCase()
-                        );
+                        // Find the current location with robust matching
+                        const normalizeLocationName = (name) => {
+                            return name.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+                        };
+                        
+                        const normalizedSearchName = normalizeLocationName(locationName);
+                        console.log('🗺️ Searching for normalized location:', normalizedSearchName);
+                        
+                        const currentLocation = result.locations.find(loc => {
+                            const normalizedDbName = normalizeLocationName(loc.name);
+                            console.log(`🗺️ Comparing "${normalizedSearchName}" with "${normalizedDbName}"`);
+                            return normalizedDbName === normalizedSearchName;
+                        });
                         
                         if (currentLocation) {
                             console.log('🗺️ Found current location:', currentLocation);
@@ -793,7 +825,11 @@ Enter commands to investigate the mystery...<br>
             }
             
             getLocationDescription() {
-                // Get the last AI response that might contain a description
+                // Use the last stored game state description if available
+                if (this.lastGameState && this.lastGameState.Description) {
+                    return this.lastGameState.Description.substring(0, 500); // Use up to 500 chars for better image generation
+                }
+                // Fallback: Get the last AI response that might contain a description
                 const messages = this.terminal.querySelectorAll('.terminal-message.ai-message');
                 if (messages.length > 0) {
                     const lastMessage = messages[messages.length - 1];
@@ -954,7 +990,7 @@ Enter commands to investigate the mystery...<br>
                         this.setLoading(true);
                         
                         // Add welcome message
-                        this.addToTerminal('[SYSTEM] Welcome detective! Loading case files and analyzing the scene...', 'system-message');
+                        this.addToTerminal('[SYSTEM] Welcome detective! Generating your world, this will take up to 2 mins. Please wait...', 'system-message');
                         
                         // Send initial 'look around' command
                         const response = await fetch(this.apiEndpoint, {
@@ -975,7 +1011,7 @@ Enter commands to investigate the mystery...<br>
                         
                         const data = await response.json();
                         
-                        // Add AI response to terminal (with sanitization check)
+                        // Normal response handling
                         const cleanContent = this.sanitizeDisplayContent(data.content);
                         this.addToTerminal(cleanContent, 'ai-message');
                         
