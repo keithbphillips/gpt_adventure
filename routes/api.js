@@ -33,9 +33,6 @@ router.post('/fantasy-game', authenticateUser, async (req, res) => {
     if (lastConvo) {
       // Reconstruct game state from database record
       previousGameState = {
-        Summary: lastConvo.summary || '',
-        Query: command, // Store the current command
-        Temp: lastConvo.temp || '5',
         Registered: lastConvo.registered || '',
         Name: lastConvo.name || '',
         Gender: lastConvo.gender || '',
@@ -68,9 +65,6 @@ router.post('/fantasy-game', authenticateUser, async (req, res) => {
       const newConvo = await Convo.create({
         player: username,
         datetime: new Date(),
-        summary: result.gameState.Summary || '',
-        query: command,
-        temp: result.gameState.Temp || '5',
         registered: result.gameState.Registered || '',
         name: result.gameState.Name || '',
         gender: result.gameState.Gender || '',
@@ -368,45 +362,177 @@ router.post('/adv-api', authenticateUser, [
     } catch (error) {
     }
 
-    // Load available quests for this player
-    let availableQuests = [];
+    // Reconstruct previous game state from the most recent saved data
+    let previousGameState = null;
+    if (savedData.length > 0) {
+      const lastConvo = savedData[0]; // Most recent record
+      previousGameState = {
+        Registered: lastConvo.registered || '',
+        Name: lastConvo.name || '',
+        Gender: lastConvo.gender || '',
+        Class: lastConvo.playerClass || '',
+        Race: lastConvo.race || '',
+        Turn: lastConvo.turn || '1',
+        Time: lastConvo.timePeriod || '',
+        Day: lastConvo.dayNumber || '',
+        Weather: lastConvo.weather || '',
+        Health: lastConvo.health || '',
+        Gold: lastConvo.gold || '',
+        XP: lastConvo.xp || '',
+        AC: lastConvo.ac || '',
+        Level: lastConvo.level || '',
+        Description: lastConvo.description || '',
+        Quest: lastConvo.quest || '',
+        Location: lastConvo.location || '',
+        Stats: JSON.parse(lastConvo.stats || '{}'),
+        Inventory: JSON.parse(lastConvo.inventory || '[]'),
+        Genre: lastConvo.genre || 'fantasy D&D'
+      };
+    }
+
+    // Simple quest logic: empty quest field = Available Quests, populated quest field = Current Quest only
+    let questData = null;
     try {
-      const quests = await Quest.findAll({
-        where: { 
-          player: username, 
-          genre: 'fantasy D&D',
-          status: 'available'
-        },
-        order: [['id', 'ASC']],
-        raw: true
-      });
+      // Get the quest field from the most recent game data
+      const questField = (savedData.length > 0) ? (savedData[0].quest || '') : '';
+      
+      if (!questField || questField === '' || questField === '-') {
+        // No quest in progress - load Available Quests for selection
+        const quests = await Quest.findAll({
+          where: { 
+            player: username, 
+            genre: 'fantasy D&D',
+            status: 'available'
+          },
+          order: [['id', 'ASC']],
+          raw: true
+        });
 
-      availableQuests = quests.map(quest => ({
-        title: quest.title,
-        description: quest.description,
-        starting_location: quest.starting_location,
-        related_locations: JSON.parse(quest.related_locations || '[]'),
-        required_items: JSON.parse(quest.required_items || '[]'),
-        success_condition: quest.success_condition,
-        xp_reward: quest.xp_reward
-      }));
+        questData = {
+          type: 'available_quests',
+          data: quests.map(quest => ({
+            title: quest.title,
+            description: quest.description,
+            starting_location: quest.starting_location,
+            related_locations: JSON.parse(quest.related_locations || '[]'),
+            required_items: JSON.parse(quest.required_items || '[]'),
+            success_condition: quest.success_condition,
+            xp_reward: quest.xp_reward
+          }))
+        };
 
-      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+        console.log(`🎯 Loaded ${questData.data.length} Available Quests for ${username} to choose from`);
+      } else {
+        // Quest in progress - load Current Quest data only
+        const currentQuest = await Quest.findOne({
+          where: { 
+            player: username, 
+            genre: 'fantasy D&D',
+            title: questField
+          },
+          raw: true
+        });
+
+        if (currentQuest) {
+          questData = {
+            type: 'current_quest',
+            data: {
+              id: currentQuest.id,
+              title: currentQuest.title,
+              description: currentQuest.description,
+              starting_location: currentQuest.starting_location,
+              related_locations: JSON.parse(currentQuest.related_locations || '[]'),
+              required_items: JSON.parse(currentQuest.required_items || '[]'),
+              success_condition: currentQuest.success_condition,
+              xp_reward: currentQuest.xp_reward,
+              player: currentQuest.player,
+              genre: currentQuest.genre,
+              status: currentQuest.status
+            }
+          };
+          console.log(`🎯 Loaded Current Quest for ${username}: ${questField}`);
+        } else {
+          console.log(`⚠️ Quest "${questField}" not found in database, loading available quests instead`);
+          // Fallback to available quests if current quest not found
+          const quests = await Quest.findAll({
+            where: { 
+              player: username, 
+              genre: 'fantasy D&D',
+              status: 'available'
+            },
+            order: [['id', 'ASC']],
+            raw: true
+          });
+
+          questData = {
+            type: 'available_quests',
+            data: quests.map(quest => ({
+              title: quest.title,
+              description: quest.description,
+              starting_location: quest.starting_location,
+              related_locations: JSON.parse(quest.related_locations || '[]'),
+              required_items: JSON.parse(quest.required_items || '[]'),
+              success_condition: quest.success_condition,
+              xp_reward: quest.xp_reward
+            }))
+          };
+        }
+      }
     } catch (questError) {
-      console.error('❌ Failed to load quests:', questError);
+      console.error('❌ Failed to load quest data:', questError);
+      questData = { type: 'available_quests', data: [] };
+    }
+
+    // Check if player is in specific quest locations and add available quests list
+    const currentLocation = (savedData.length > 0) ? (savedData[0].location || '') : '';
+    const currentGenre = (savedData.length > 0) ? (savedData[0].genre || 'fantasy D&D') : 'fantasy D&D';
+    
+    let questLocations = {
+      'fantasy D&D': 'Adventurer\'s Guild',
+      'mystery': 'Newspaper Office',
+      'scifi': 'Unemployment Center'
+    };
+    
+    if (currentLocation === questLocations[currentGenre]) {
+      try {
+        const availableQuests = await Quest.findAll({
+          where: {
+            player: username,
+            genre: currentGenre,
+            status: 'available'
+          },
+          attributes: ['title'],
+          raw: true
+        });
+        
+        if (availableQuests.length > 0) {
+          const questTitles = availableQuests.map(quest => quest.title);
+          
+          // If we already have quest data, add available quests to it
+          if (questData) {
+            questData.availableQuests = questTitles;
+          } else {
+            questData = { 
+              type: 'location_quests', 
+              availableQuests: questTitles 
+            };
+          }
+          
+          console.log(`🎯 Added ${questTitles.length} available quest titles for ${currentGenre} at ${currentLocation}`);
+        }
+      } catch (locationQuestError) {
+        console.error('❌ Failed to load location-based quest data:', locationQuestError);
+      }
     }
 
     // Use the simplified fantasy game processing with conversation history for better context
-    const result = await openaiService.processFantasyGame(username, inputData, null, availableQuests, savedData);
+    const result = await openaiService.processFantasyGame(username, inputData, null, questData, savedData);
 
     // Save the new game state to database
     if (result.gameState) {
       await Convo.create({
         player: username,
         datetime: new Date(),
-        summary: result.gameState.Summary || '',
-        query: inputData,
-        temp: result.gameState.Temp || '5',
         registered: result.gameState.Registered || '',
         name: result.gameState.Name || '',
         gender: result.gameState.Gender || '',
@@ -555,32 +681,61 @@ router.post('/mys-api', authenticateUser, [
     } catch (error) {
     }
 
-    // Load available quests for this player
+    // Load quests for this player (active quest if they have one, or available quests if they don't)
     let availableQuests = [];
     try {
-      const quests = await Quest.findAll({
-        where: { 
-          player: username, 
-          genre: 'Mystery',
-          status: 'available'
-        },
-        order: [['id', 'ASC']],
-        raw: true
-      });
+      // Get the player's current quest from their most recent game state  
+      const currentQuest = lastConvo?.quest || '';
+      
+      if (currentQuest && currentQuest !== '' && currentQuest !== '-') {
+        // Player has an active quest - show only that quest
+        const questDetails = await Quest.findOne({
+          where: { 
+            player: username, 
+            genre: 'Mystery',
+            title: currentQuest
+          },
+          raw: true
+        });
 
-      availableQuests = quests.map(quest => ({
-        title: quest.title,
-        description: quest.description,
-        starting_location: quest.starting_location,
-        related_locations: JSON.parse(quest.related_locations || '[]'),
-        required_items: JSON.parse(quest.required_items || '[]'),
-        success_condition: quest.success_condition,
-        xp_reward: quest.xp_reward
-      }));
+        if (questDetails) {
+          availableQuests = [{
+            title: questDetails.title,
+            description: questDetails.description,
+            starting_location: questDetails.starting_location,
+            related_locations: JSON.parse(questDetails.related_locations || '[]'),
+            required_items: JSON.parse(questDetails.required_items || '[]'),
+            success_condition: questDetails.success_condition,
+            xp_reward: questDetails.xp_reward
+          }];
+        }
+        console.log(`🎯 Loaded 1 active quest for ${username}: ${currentQuest}`);
+      } else {
+        // Player has no active quest - show available quests for selection
+        const quests = await Quest.findAll({
+          where: { 
+            player: username, 
+            genre: 'Mystery',
+            status: 'available'
+          },
+          order: [['id', 'ASC']],
+          raw: true
+        });
 
-      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+        availableQuests = quests.map(quest => ({
+          title: quest.title,
+          description: quest.description,
+          starting_location: quest.starting_location,
+          related_locations: JSON.parse(quest.related_locations || '[]'),
+          required_items: JSON.parse(quest.required_items || '[]'),
+          success_condition: quest.success_condition,
+          xp_reward: quest.xp_reward
+        }));
+
+        console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username} to choose from`);
+      }
     } catch (questError) {
-      console.error('❌ Failed to load quests:', questError);
+      console.error('❌ Failed to load quest:', questError);
     }
 
     // Use the simplified mystery game processing with conversation history for better context
@@ -591,9 +746,6 @@ router.post('/mys-api', authenticateUser, [
       await Convo.create({
         player: username,
         datetime: new Date(),
-        summary: result.gameState.Summary || '',
-        query: inputData,
-        temp: result.gameState.Temp || '5',
         registered: result.gameState.Registered || '',
         name: result.gameState.Name || '',
         gender: result.gameState.Gender || '',
@@ -738,32 +890,61 @@ router.post('/sci-api', authenticateUser, [
     } catch (error) {
     }
 
-    // Load available quests for this player
+    // Load quests for this player (active quest if they have one, or available quests if they don't)
     let availableQuests = [];
     try {
-      const quests = await Quest.findAll({
-        where: { 
-          player: username, 
-          genre: 'Science Fiction',
-          status: 'available'
-        },
-        order: [['id', 'ASC']],
-        raw: true
-      });
+      // Get the player's current quest from their most recent game state
+      const currentQuest = lastConvo?.quest || '';
+      
+      if (currentQuest && currentQuest !== '' && currentQuest !== '-') {
+        // Player has an active quest - show only that quest
+        const questDetails = await Quest.findOne({
+          where: { 
+            player: username, 
+            genre: 'Science Fiction',
+            title: currentQuest
+          },
+          raw: true
+        });
 
-      availableQuests = quests.map(quest => ({
-        title: quest.title,
-        description: quest.description,
-        starting_location: quest.starting_location,
-        related_locations: JSON.parse(quest.related_locations || '[]'),
-        required_items: JSON.parse(quest.required_items || '[]'),
-        success_condition: quest.success_condition,
-        xp_reward: quest.xp_reward
-      }));
+        if (questDetails) {
+          availableQuests = [{
+            title: questDetails.title,
+            description: questDetails.description,
+            starting_location: questDetails.starting_location,
+            related_locations: JSON.parse(questDetails.related_locations || '[]'),
+            required_items: JSON.parse(questDetails.required_items || '[]'),
+            success_condition: questDetails.success_condition,
+            xp_reward: questDetails.xp_reward
+          }];
+        }
+        console.log(`🎯 Loaded 1 active quest for ${username}: ${currentQuest}`);
+      } else {
+        // Player has no active quest - show available quests for selection
+        const quests = await Quest.findAll({
+          where: { 
+            player: username, 
+            genre: 'Science Fiction',
+            status: 'available'
+          },
+          order: [['id', 'ASC']],
+          raw: true
+        });
 
-      console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username}`);
+        availableQuests = quests.map(quest => ({
+          title: quest.title,
+          description: quest.description,
+          starting_location: quest.starting_location,
+          related_locations: JSON.parse(quest.related_locations || '[]'),
+          required_items: JSON.parse(quest.required_items || '[]'),
+          success_condition: quest.success_condition,
+          xp_reward: quest.xp_reward
+        }));
+
+        console.log(`🎯 Loaded ${availableQuests.length} available quests for ${username} to choose from`);
+      }
     } catch (questError) {
-      console.error('❌ Failed to load quests:', questError);
+      console.error('❌ Failed to load quest:', questError);
     }
 
     // Use the simplified sci-fi game processing with conversation history for better context
@@ -774,9 +955,6 @@ router.post('/sci-api', authenticateUser, [
       await Convo.create({
         player: username,
         datetime: new Date(),
-        summary: result.gameState.Summary || '',
-        query: inputData,
-        temp: result.gameState.Temp || '5',
         registered: result.gameState.Registered || '',
         name: result.gameState.Name || '',
         gender: result.gameState.Gender || '',
@@ -912,11 +1090,8 @@ router.post('/custom-api', authenticateUser, [
         player: username,
         contentUser: inputData,
         contentAssistant: responseData.content,
-        summary: responseData.data.summary || '',
         action: responseData.data.action || responseData.content,
         genre: responseData.data.genre || 'Custom',
-        query: responseData.data.query || '',
-        temp: responseData.data.temp || '5',
         name: responseData.data.name || '',
         playerClass: responseData.data.playerClass || '',
         race: responseData.data.race || '',

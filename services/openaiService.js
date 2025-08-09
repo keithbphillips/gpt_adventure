@@ -326,11 +326,12 @@ class OpenAIService {
   }
 
   // Simplified fantasy-only game processing
-  async processFantasyGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
+  async processFantasyGame(user, command, previousGameState = null, questData = null, conversationHistory = []) {
     try {
       console.log('🎮 ===== SIMPLIFIED FANTASY GAME TURN =====');
       console.log(`Player: ${user}`);
       console.log(`Command: ${command}`);
+      console.log(`Conversation history length: ${conversationHistory.length}`);
       
       // Load fantasy instructions
       const instructions = await fs.readFile(
@@ -355,9 +356,6 @@ class OpenAIService {
         
         // Build current game state from database
         currentGameState = {
-          Summary: conversationSummary,
-          Query: command,
-          Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
           Name: lastConvo.name || '',
           Gender: lastConvo.gender || '',
@@ -404,6 +402,32 @@ class OpenAIService {
             console.log('⚠️ No exit data found for location');
           }
         }
+      } else {
+        // No previous conversation - new player needs initial game state for registration
+        console.log('🆕 New player detected, creating initial game state for registration');
+        currentGameState = {
+          Registered: '',
+          Name: '',
+          Gender: '',
+          Class: '',
+          Race: '',
+          Turn: '1',
+          Time: '10:40 AM',
+          Day: '1',
+          Weather: 'sunny',
+          Health: '',
+          Gold: '10',
+          XP: '0',
+          AC: '10',
+          Level: '1',
+          Description: '',
+          Quest: '',
+          Location: 'Adventurer\'s Guild',
+          Exits: {},
+          Stats: {},
+          Inventory: ['pocket-lint'],
+          Genre: 'fantasy D&D'
+        };
       }
       
       // Build system message with current game state appended
@@ -412,11 +436,20 @@ class OpenAIService {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
       
-      // Add available quests to system context
-      if (availableQuests && availableQuests.length > 0) {
-        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
-        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
-        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      // Add quest data to system context based on type (only current quest, not available quests)
+      if (questData) {
+        if (questData.type === 'current_quest' && questData.data) {
+          systemContent += '\n\nCURRENT QUEST:\n' + JSON.stringify(questData.data, null, 2);
+          systemContent += '\n\nNote: The player is actively pursuing this quest. Focus on this quest objective and related gameplay elements.';
+          console.log(`🎯 Added current quest to system context: ${questData.data.title}`);
+        }
+        
+        // Add available quests list when player is in specific quest locations
+        if (questData.availableQuests && questData.availableQuests.length > 0) {
+          systemContent += '\n\nAVAILABLE QUESTS:\n' + questData.availableQuests.map(title => `- ${title}`).join('\n');
+          systemContent += '\n\nNote: The player is in a quest location and can see available quests. They can ask about or select any of these quests.';
+          console.log(`🎯 Added ${questData.availableQuests.length} available quest titles to system context`);
+        }
       }
       
       // Build the request messages
@@ -426,6 +459,32 @@ class OpenAIService {
           content: systemContent
         }
       ];
+      
+      // Add conversation history from previous turns (up to 7 recent turns)
+      const recentMessages = conversationHistory.slice(-7); // Get last 7 turns
+      console.log(`📜 Adding ${recentMessages.length} conversation history entries`);
+      
+      for (const msg of recentMessages) {
+        // Add user message (player's previous action)
+        if (msg.contentUser) {
+          messages.push({
+            role: 'user',
+            content: msg.contentUser
+          });
+        }
+        
+        // Add assistant message (game's previous response)
+        if (msg.description || msg.action) {
+          // Combine the narrative description with any action text
+          const responseText = [msg.description, msg.action].filter(Boolean).join('\n\n');
+          if (responseText.trim()) {
+            messages.push({
+              role: 'assistant',
+              content: responseText
+            });
+          }
+        }
+      }
       
       // Add current user command
       messages.push({
@@ -510,11 +569,12 @@ class OpenAIService {
   }
 
   // Simplified sci-fi game processing
-  async processScifiGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
+  async processScifiGame(user, command, previousGameState = null, questData = null, conversationHistory = []) {
     try {
       console.log('🚀 ===== SIMPLIFIED SCI-FI GAME TURN =====');
       console.log(`Player: ${user}`);
       console.log(`Command: ${command}`);
+      console.log(`Conversation history length: ${conversationHistory.length}`);
       
       // Load sci-fi instructions
       const instructions = await fs.readFile(
@@ -539,9 +599,6 @@ class OpenAIService {
         
         // Build current game state from database
         currentGameState = {
-          Summary: conversationSummary,
-          Query: command,
-          Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
           Name: lastConvo.name || '',
           Gender: lastConvo.gender || '',
@@ -588,6 +645,32 @@ class OpenAIService {
             console.log('⚠️ No exit data found for location');
           }
         }
+      } else {
+        // No previous conversation - new player needs initial game state for registration
+        console.log('🆕 New player detected, creating initial game state for registration');
+        currentGameState = {
+          Registered: '',
+          Name: '',
+          Gender: '',
+          Class: '',
+          Race: '',
+          Turn: '1',
+          Time: '10:40 AM',
+          Day: '1',
+          Weather: 'sunny',
+          Health: '',
+          Gold: '10',
+          XP: '0',
+          AC: '10',
+          Level: '1',
+          Description: '',
+          Quest: '',
+          Location: 'Adventurer\'s Guild',
+          Exits: {},
+          Stats: {},
+          Inventory: ['pocket-lint'],
+          Genre: 'fantasy D&D'
+        };
       }
       
       // Build system message with current game state appended
@@ -596,11 +679,20 @@ class OpenAIService {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
       
-      // Add available quests to system context
-      if (availableQuests && availableQuests.length > 0) {
-        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
-        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
-        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      // Add quest data to system context based on type (only current quest, not available quests)
+      if (questData) {
+        if (questData.type === 'current_quest' && questData.data) {
+          systemContent += '\n\nCURRENT QUEST:\n' + JSON.stringify(questData.data, null, 2);
+          systemContent += '\n\nNote: The player is actively pursuing this quest. Focus on this quest objective and related gameplay elements.';
+          console.log(`🎯 Added current quest to system context: ${questData.data.title}`);
+        }
+        
+        // Add available quests list when player is in specific quest locations
+        if (questData.availableQuests && questData.availableQuests.length > 0) {
+          systemContent += '\n\nAVAILABLE QUESTS:\n' + questData.availableQuests.map(title => `- ${title}`).join('\n');
+          systemContent += '\n\nNote: The player is in a quest location and can see available quests. They can ask about or select any of these quests.';
+          console.log(`🎯 Added ${questData.availableQuests.length} available quest titles to system context`);
+        }
       }
       
       // Build the request messages
@@ -610,6 +702,32 @@ class OpenAIService {
           content: systemContent
         }
       ];
+      
+      // Add conversation history from previous turns (up to 7 recent turns)
+      const recentMessages = conversationHistory.slice(-7); // Get last 7 turns
+      console.log(`📜 Adding ${recentMessages.length} conversation history entries`);
+      
+      for (const msg of recentMessages) {
+        // Add user message (player's previous action)
+        if (msg.contentUser) {
+          messages.push({
+            role: 'user',
+            content: msg.contentUser
+          });
+        }
+        
+        // Add assistant message (game's previous response)
+        if (msg.description || msg.action) {
+          // Combine the narrative description with any action text
+          const responseText = [msg.description, msg.action].filter(Boolean).join('\n\n');
+          if (responseText.trim()) {
+            messages.push({
+              role: 'assistant',
+              content: responseText
+            });
+          }
+        }
+      }
       
       // Add current user command
       messages.push({
@@ -694,11 +812,12 @@ class OpenAIService {
   }
 
   // Simplified mystery game processing
-  async processMysteryGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
+  async processMysteryGame(user, command, previousGameState = null, questData = null, conversationHistory = []) {
     try {
       console.log('🔍 ===== SIMPLIFIED MYSTERY GAME TURN =====');
       console.log(`Player: ${user}`);
       console.log(`Command: ${command}`);
+      console.log(`Conversation history length: ${conversationHistory.length}`);
       
       // Load mystery instructions
       const instructions = await fs.readFile(
@@ -723,9 +842,6 @@ class OpenAIService {
         
         // Build current game state from database
         currentGameState = {
-          Summary: conversationSummary,
-          Query: command,
-          Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
           Name: lastConvo.name || '',
           Gender: lastConvo.gender || '',
@@ -772,6 +888,32 @@ class OpenAIService {
             console.log('⚠️ No exit data found for location');
           }
         }
+      } else {
+        // No previous conversation - new player needs initial game state for registration
+        console.log('🆕 New player detected, creating initial game state for registration');
+        currentGameState = {
+          Registered: '',
+          Name: '',
+          Gender: '',
+          Class: '',
+          Race: '',
+          Turn: '1',
+          Time: '10:40 AM',
+          Day: '1',
+          Weather: 'sunny',
+          Health: '',
+          Gold: '10',
+          XP: '0',
+          AC: '10',
+          Level: '1',
+          Description: '',
+          Quest: '',
+          Location: 'Adventurer\'s Guild',
+          Exits: {},
+          Stats: {},
+          Inventory: ['pocket-lint'],
+          Genre: 'fantasy D&D'
+        };
       }
       
       // Build system message with current game state appended
@@ -780,11 +922,20 @@ class OpenAIService {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
       
-      // Add available quests to system context
-      if (availableQuests && availableQuests.length > 0) {
-        systemContent += '\n\nAVAILABLE QUESTS:\n' + JSON.stringify(availableQuests, null, 2);
-        systemContent += '\n\nNote: The player can ask about available quests, select quests to pursue, or get quest information. When a player selects a quest, update their game state to reflect the active quest.';
-        console.log(`🎯 Added ${availableQuests.length} available quests to system context`);
+      // Add quest data to system context based on type (only current quest, not available quests)
+      if (questData) {
+        if (questData.type === 'current_quest' && questData.data) {
+          systemContent += '\n\nCURRENT QUEST:\n' + JSON.stringify(questData.data, null, 2);
+          systemContent += '\n\nNote: The player is actively pursuing this quest. Focus on this quest objective and related gameplay elements.';
+          console.log(`🎯 Added current quest to system context: ${questData.data.title}`);
+        }
+        
+        // Add available quests list when player is in specific quest locations
+        if (questData.availableQuests && questData.availableQuests.length > 0) {
+          systemContent += '\n\nAVAILABLE QUESTS:\n' + questData.availableQuests.map(title => `- ${title}`).join('\n');
+          systemContent += '\n\nNote: The player is in a quest location and can see available quests. They can ask about or select any of these quests.';
+          console.log(`🎯 Added ${questData.availableQuests.length} available quest titles to system context`);
+        }
       }
       
       // Build the request messages
@@ -794,6 +945,32 @@ class OpenAIService {
           content: systemContent
         }
       ];
+      
+      // Add conversation history from previous turns (up to 7 recent turns)
+      const recentMessages = conversationHistory.slice(-7); // Get last 7 turns
+      console.log(`📜 Adding ${recentMessages.length} conversation history entries`);
+      
+      for (const msg of recentMessages) {
+        // Add user message (player's previous action)
+        if (msg.contentUser) {
+          messages.push({
+            role: 'user',
+            content: msg.contentUser
+          });
+        }
+        
+        // Add assistant message (game's previous response)
+        if (msg.description || msg.action) {
+          // Combine the narrative description with any action text
+          const responseText = [msg.description, msg.action].filter(Boolean).join('\n\n');
+          if (responseText.trim()) {
+            messages.push({
+              role: 'assistant',
+              content: responseText
+            });
+          }
+        }
+      }
       
       // Add current user command
       messages.push({
@@ -881,7 +1058,7 @@ class OpenAIService {
   async processGameTurn(user, messages, command, gameType = 'adventure') {
     try {
       const gameElements = [
-        'Genre', 'Query', 'Temp', 'Name', 'Class', 'Race', 'Turn', 'Time', 
+        'Genre', 'Name', 'Class', 'Race', 'Turn', 'Time', 
         'Day', 'Weather', 'Health', 'XP', 'AC', 'Level', 'Location', 'Exits', 
         'Quest', 'Inventory', 'Gender', 'Registered', 'Stats', 'Gold'
       ];
@@ -953,7 +1130,6 @@ Keep your narrative response concise and engaging.`;
 
         lastGameState = {
           Genre: lastEvent.genre || '',
-          Temp: lastEvent.temp || '',
           Name: lastEvent.name || '',
           Class: lastEvent.playerClass || '',
           Race: lastEvent.race || '',
@@ -968,8 +1144,6 @@ Keep your narrative response concise and engaging.`;
           Description: lastEvent.description || '',
           Action: lastEvent.action || '',
           Quest: lastEvent.quest || '',
-          Query: lastEvent.query || '',
-          Summary: lastEvent.summary || '',
           Inventory: parsedInventory,
           Location: lastEvent.location || '',
           Gender: lastEvent.gender || '',
@@ -978,7 +1152,7 @@ Keep your narrative response concise and engaging.`;
           Gold: lastEvent.gold || ''
         };
         
-        temperature = lastEvent.temp ? parseInt(lastEvent.temp) / 10 : 0.6;
+        temperature = 0.6; // Fixed temperature since Temp field removed
       }
 
       // Validate temperature
@@ -1070,9 +1244,6 @@ Description: ${locationData.description}`;
       
       // Build current game state JSON string - fix field name mapping
       const currentGameState = {
-        Summary: lastGameState.Summary || '',
-        Query: lastGameState.Query || '',
-        Temp: lastGameState.Temp || '5',
         Registered: lastGameState.Registered || '',
         Name: lastGameState.Name || '',
         Gender: lastGameState.Gender || '',
@@ -1125,10 +1296,10 @@ Description: ${locationData.description}`;
       
       for (const msg of recentMessages) {
         // Add user message (player's previous action)
-        if (msg.query) {
+        if (msg.contentUser) {
           requestMessages.push({
             role: 'user',
-            content: msg.query
+            content: msg.contentUser
           });
         }
         
@@ -1327,9 +1498,6 @@ Description: ${locationData.description}`;
         
         // Return deconstructed data for storing in individual database fields
         const mappedData = {
-          summary: jsonData.Summary || '',
-          query: command, // Store the actual user command, not AI's interpretation
-          temp: jsonData.Temp || '5',
           registered: finalRegistered,
           name: finalName,
           gender: jsonData.Gender || '',
@@ -1379,9 +1547,6 @@ Description: ${locationData.description}`;
         const fallbackResponse = {
           content: this.sanitizeNarrativeText(messageContent),
           data: {
-            summary: `Turn ${currentTurn}: Player action processed`,
-            query: command, // Store actual user command in fallback too
-            temp: lastGameState.Temp || '5',
             registered: fallbackRegistered,
             name: lastGameState.Name || '',
             gender: lastGameState.Gender || '',

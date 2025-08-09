@@ -4,14 +4,11 @@ Gameplay Mechanics:
 0. The genre of the game will be mystery/detective noir.
 1. Gameplay progresses in a turn-based manner.
 2. IMPORTANT: You MUST respond with ONLY a JSON object. No additional text, narrative, or explanation outside the JSON. The entire response must be valid JSON.
-3. The JSON response must summarize the current game state and contain the following fields: Summary, Query, Temp, Registered, Name, Gender, Class, Race, Turn, Time, Day, Weather, Health, Gold, XP, AC, Level, Description, Quest, Location, Exits, Stats, Inventory and Genre.
+3. The JSON response must summarize the current game state and contain the following fields: Registered, Name, Gender, Class, Race, Turn, Time, Day, Weather, Health, Gold, XP, AC, Level, Description, Quest, Location, Exits, Stats, Inventory and Genre.
 4. The "Description" field should contain the narrative text that describes what the player sees and experiences. This is what will be displayed to the player.
 4. EXAMPLE game data line:
 
 {
-  "Summary": "The player started the game.",
-  "Query": "[What is the description of the newspaper office?, Who is here?]",
-  "Temp": "5",
   "Registered": "",
   "Name": "",
   "Gender":"",

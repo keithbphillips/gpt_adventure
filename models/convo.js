@@ -34,11 +34,6 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: ''
     },
-    temp: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      defaultValue: ''
-    },
     contentUser: {
       type: DataTypes.TEXT,
       allowNull: false,
@@ -118,17 +113,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: ''
     },
-    summary: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      defaultValue: ''
-    },
     genre: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      defaultValue: ''
-    },
-    query: {
       type: DataTypes.TEXT,
       allowNull: false,
       defaultValue: ''
