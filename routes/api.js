@@ -1125,7 +1125,7 @@ router.post('/generate-world', authenticateUser, async (req, res) => {
     const username = req.user.username;
     const { genre = 'fantasy D&D', force = false } = req.body;
     
-    let deletedLocations = 0, deletedConvos = 0, deletedImages = 0;
+    let deletedLocations = 0, deletedConvos = 0, deletedImages = 0, deletedQuests = 0;
     
     // If force is true, delete existing world first
     if (force) {
@@ -1160,6 +1160,12 @@ router.post('/generate-world', authenticateUser, async (req, res) => {
           throw dbError;
         }
       }
+      
+      // Clear quests for this genre
+      deletedQuests = await Quest.destroy({
+        where: { player: username, genre: genre }
+      });
+      console.log(`🗑️ Deleted ${deletedQuests} quest records`);
     }
     
     const locationCount = await generateWorldLocations(username, genre);
@@ -1172,7 +1178,8 @@ router.post('/generate-world', authenticateUser, async (req, res) => {
       cleared: force ? {
         locations: deletedLocations,
         conversations: deletedConvos,
-        images: deletedImages
+        images: deletedImages,
+        quests: deletedQuests
       } : null
     });
   } catch (error) {
