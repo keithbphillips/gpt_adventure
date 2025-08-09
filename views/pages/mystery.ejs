@@ -276,6 +276,141 @@
             content: "[ERROR] ";
             color: #ff0000;
         }
+
+        /* Mobile responsive styles */
+        @media screen and (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: 100vh;
+            }
+            
+            .sidebar {
+                flex: 0 0 auto;
+                width: 100%;
+                max-height: 40vh;
+                overflow-y: auto;
+                order: 1;
+                padding: 10px;
+                font-size: 11px;
+            }
+            
+            .sidebar h5 {
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 3px;
+                font-size: 10px;
+            }
+            
+            .terminal {
+                flex: 1;
+                order: 2;
+                padding: 10px;
+                font-size: 13px;
+                overflow-y: auto;
+            }
+            
+            .terminal-input {
+                position: sticky;
+                bottom: 0;
+                background-color: #000;
+                padding: 10px 0;
+                border-top: 1px solid #00ff00;
+            }
+            
+            .terminal-input input {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 8px;
+                border: 1px solid #00ff00;
+                border-radius: 4px;
+                background-color: #001100;
+            }
+            
+            .compass {
+                width: 80px;
+                height: 80px;
+            }
+            
+            .compass [class*="exit-"] {
+                width: 16px;
+                height: 16px;
+                font-size: 8px;
+            }
+            
+            .location-image-container {
+                height: 80px;
+            }
+            
+            /* Make buttons more touch-friendly */
+            .btn {
+                min-height: 44px;
+                font-size: 12px !important;
+                padding: 8px 12px !important;
+            }
+            
+            /* Optimize compass positioning for smaller size */
+            .exit-north { top: -8px; }
+            .exit-south { bottom: -8px; }
+            .exit-east { right: -8px; }
+            .exit-west { left: -8px; }
+            .exit-northeast { top: 4px; right: 4px; }
+            .exit-northwest { top: 4px; left: 4px; }
+            .exit-southeast { bottom: 4px; right: 4px; }
+            .exit-southwest { bottom: 4px; left: 4px; }
+            .exit-up { top: 12px; }
+            .exit-down { bottom: 12px; }
+        }
+        
+        @media screen and (max-width: 480px) {
+            .sidebar {
+                max-height: 35vh;
+                padding: 8px;
+                font-size: 10px;
+            }
+            
+            .sidebar h5 {
+                font-size: 12px;
+            }
+            
+            .stats-grid {
+                font-size: 9px;
+            }
+            
+            .terminal {
+                padding: 8px;
+                font-size: 12px;
+            }
+            
+            .compass {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .compass [class*="exit-"] {
+                width: 12px;
+                height: 12px;
+                font-size: 7px;
+            }
+            
+            .location-image-container {
+                height: 60px;
+            }
+            
+            /* Further optimize compass for very small screens */
+            .exit-north { top: -6px; }
+            .exit-south { bottom: -6px; }
+            .exit-east { right: -6px; }
+            .exit-west { left: -6px; }
+            .exit-northeast { top: 2px; right: 2px; }
+            .exit-northwest { top: 2px; left: 2px; }
+            .exit-southeast { bottom: 2px; right: 2px; }
+            .exit-southwest { bottom: 2px; left: 2px; }
+            .exit-up { top: 8px; }
+            .exit-down { bottom: 8px; }
+        }
     </style>
 </head>
 <body>

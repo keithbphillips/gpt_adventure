@@ -396,8 +396,8 @@ router.post('/adv-api', authenticateUser, [
       console.error('❌ Failed to load quests:', questError);
     }
 
-    // Use the simplified fantasy game processing
-    const result = await openaiService.processFantasyGame(username, inputData, null, availableQuests);
+    // Use the simplified fantasy game processing with conversation history for better context
+    const result = await openaiService.processFantasyGame(username, inputData, null, availableQuests, savedData);
 
     // Save the new game state to database
     if (result.gameState) {
@@ -583,8 +583,8 @@ router.post('/mys-api', authenticateUser, [
       console.error('❌ Failed to load quests:', questError);
     }
 
-    // Use the simplified mystery game processing
-    const result = await openaiService.processMysteryGame(username, inputData, null, availableQuests);
+    // Use the simplified mystery game processing with conversation history for better context
+    const result = await openaiService.processMysteryGame(username, inputData, null, availableQuests, savedData);
 
     // Save the new game state to database
     if (result.gameState) {
@@ -766,8 +766,8 @@ router.post('/sci-api', authenticateUser, [
       console.error('❌ Failed to load quests:', questError);
     }
 
-    // Use the simplified sci-fi game processing
-    const result = await openaiService.processScifiGame(username, inputData, null, availableQuests);
+    // Use the simplified sci-fi game processing with conversation history for better context
+    const result = await openaiService.processScifiGame(username, inputData, null, availableQuests, savedData);
 
     // Save the new game state to database
     if (result.gameState) {

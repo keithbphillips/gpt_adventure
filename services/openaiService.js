@@ -20,6 +20,37 @@ class OpenAIService {
     this.instructionsCache.clear();
   }
 
+  // Generate a summary of recent descriptions from conversation history for better context memory
+  generateConversationSummary(conversationHistory) {
+    if (!conversationHistory || conversationHistory.length === 0) {
+      return 'Beginning of adventure.';
+    }
+    
+    // Extract description fields from recent conversations (up to last 5-7 entries)
+    const descriptions = conversationHistory
+      .slice(0, 7) // Take up to 7 most recent conversations
+      .map(convo => convo.Description || convo.description)
+      .filter(desc => desc && desc.trim() && desc !== '-')
+      .reverse(); // Put in chronological order (oldest first)
+    
+    if (descriptions.length === 0) {
+      return 'Beginning of adventure.';
+    }
+    
+    // Join descriptions with a separator to create a flowing summary
+    const summary = descriptions
+      .join(' ')
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    // Limit summary length to avoid token bloat
+    if (summary.length > 800) {
+      return summary.substring(0, 800) + '...';
+    }
+    
+    return summary;
+  }
+
   // Check token count to stay within limits (improved for better context)
   checkTokenCount(eventList, maxTokens = 6000) { // Increased for better story continuity
     const shortList = [];
@@ -295,7 +326,7 @@ class OpenAIService {
   }
 
   // Simplified fantasy-only game processing
-  async processFantasyGame(user, command, previousGameState = null, availableQuests = []) {
+  async processFantasyGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
     try {
       console.log('🎮 ===== SIMPLIFIED FANTASY GAME TURN =====');
       console.log(`Player: ${user}`);
@@ -319,9 +350,12 @@ class OpenAIService {
       
       let currentGameState = null;
       if (lastConvo) {
+        // Generate conversation summary from recent descriptions for better context memory
+        const conversationSummary = this.generateConversationSummary(conversationHistory);
+        
         // Build current game state from database
         currentGameState = {
-          Summary: lastConvo.summary || '',
+          Summary: conversationSummary,
           Query: command,
           Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
@@ -476,7 +510,7 @@ class OpenAIService {
   }
 
   // Simplified sci-fi game processing
-  async processScifiGame(user, command, previousGameState = null, availableQuests = []) {
+  async processScifiGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
     try {
       console.log('🚀 ===== SIMPLIFIED SCI-FI GAME TURN =====');
       console.log(`Player: ${user}`);
@@ -500,9 +534,12 @@ class OpenAIService {
       
       let currentGameState = null;
       if (lastConvo) {
+        // Generate conversation summary from recent descriptions for better context memory
+        const conversationSummary = this.generateConversationSummary(conversationHistory);
+        
         // Build current game state from database
         currentGameState = {
-          Summary: lastConvo.summary || '',
+          Summary: conversationSummary,
           Query: command,
           Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
@@ -657,7 +694,7 @@ class OpenAIService {
   }
 
   // Simplified mystery game processing
-  async processMysteryGame(user, command, previousGameState = null, availableQuests = []) {
+  async processMysteryGame(user, command, previousGameState = null, availableQuests = [], conversationHistory = []) {
     try {
       console.log('🔍 ===== SIMPLIFIED MYSTERY GAME TURN =====');
       console.log(`Player: ${user}`);
@@ -681,9 +718,12 @@ class OpenAIService {
       
       let currentGameState = null;
       if (lastConvo) {
+        // Generate conversation summary from recent descriptions for better context memory
+        const conversationSummary = this.generateConversationSummary(conversationHistory);
+        
         // Build current game state from database
         currentGameState = {
-          Summary: lastConvo.summary || '',
+          Summary: conversationSummary,
           Query: command,
           Temp: lastConvo.temp || '5',
           Registered: lastConvo.registered || '',
