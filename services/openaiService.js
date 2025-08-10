@@ -10,6 +10,18 @@ class OpenAIService {
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
     });
+    
+    // Configure models from environment variables with fallbacks
+    this.gameModel = process.env.OPENAI_GAME_MODEL || 'gpt-4o';
+    this.worldModel = process.env.OPENAI_WORLD_MODEL || 'gpt-4o';
+    this.questModel = process.env.OPENAI_QUEST_MODEL || 'gpt-4';
+    this.imageModel = process.env.OPENAI_IMAGE_MODEL || 'dall-e-3';
+    
+    console.log(`🎮 Game Model: ${this.gameModel}`);
+    console.log(`🌍 World Model: ${this.worldModel}`);
+    console.log(`🎯 Quest Model: ${this.questModel}`);
+    console.log(`🖼️ Image Model: ${this.imageModel}`);
+    
     this.encoding = encoding_for_model('gpt-4');
     this.instructionsCache = new Map(); // Cache for game instructions
     console.log('🤖 =============== OPENAI SERVICE READY ===============\n');
@@ -20,8 +32,9 @@ class OpenAIService {
     this.instructionsCache.clear();
   }
 
-  // Generate a summary of recent descriptions from conversation history for better context memory
-  generateConversationSummary(conversationHistory) {
+
+  // Legacy method for simple summary generation (kept for backward compatibility)
+  generateSimpleConversationSummary(conversationHistory) {
     if (!conversationHistory || conversationHistory.length === 0) {
       return 'Beginning of adventure.';
     }
@@ -158,11 +171,13 @@ class OpenAIService {
   }
 
   // Query GPT with retry logic
-  async queryGpt(eventList, model = 'gpt-4o', temperature = 0.6, retries = 3) {
+  async queryGpt(eventList, model = null, temperature = 0.6, retries = 3) {
+    // Use configured game model if no model specified
+    const selectedModel = model || this.gameModel;
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const requestData = {
-          model: model,
+          model: selectedModel,
           messages: eventList,
           temperature: temperature,
           max_tokens: 1200, // Increased for better storytelling
@@ -350,9 +365,8 @@ class OpenAIService {
       });
       
       let currentGameState = null;
+      
       if (lastConvo) {
-        // Generate conversation summary from recent descriptions for better context memory
-        const conversationSummary = this.generateConversationSummary(conversationHistory);
         
         // Build current game state from database
         currentGameState = {
@@ -376,7 +390,8 @@ class OpenAIService {
           Exits: {},  // Will be populated from location lookup
           Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
           Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
-          Genre: 'fantasy D&D'
+          Genre: 'fantasy D&D',
+          Summary: lastConvo.summary || ''
         };
         
         // Look up exit information from location table
@@ -426,7 +441,8 @@ class OpenAIService {
           Exits: {},
           Stats: {},
           Inventory: ['pocket-lint'],
-          Genre: 'fantasy D&D'
+          Genre: 'fantasy D&D',
+          Summary: ''
         };
       }
       
@@ -435,6 +451,7 @@ class OpenAIService {
       if (currentGameState) {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
+      
       
       // Add quest data to system context based on type (only current quest, not available quests)
       if (questData) {
@@ -496,7 +513,7 @@ class OpenAIService {
       console.log('📋 FULL OPENAI REQUEST:');
       console.log('='.repeat(80));
       const fullRequest = {
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -506,7 +523,7 @@ class OpenAIService {
       
       // Send to OpenAI
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -593,9 +610,8 @@ class OpenAIService {
       });
       
       let currentGameState = null;
+      
       if (lastConvo) {
-        // Generate conversation summary from recent descriptions for better context memory
-        const conversationSummary = this.generateConversationSummary(conversationHistory);
         
         // Build current game state from database
         currentGameState = {
@@ -619,7 +635,8 @@ class OpenAIService {
           Exits: {},  // Will be populated from location lookup
           Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
           Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
-          Genre: 'Science Fiction'
+          Genre: 'Science Fiction',
+          Summary: lastConvo.summary || ''
         };
         
         // Look up exit information from location table
@@ -665,11 +682,12 @@ class OpenAIService {
           Level: '1',
           Description: '',
           Quest: '',
-          Location: 'Adventurer\'s Guild',
+          Location: 'Unemployment Center',
           Exits: {},
           Stats: {},
-          Inventory: ['pocket-lint'],
-          Genre: 'fantasy D&D'
+          Inventory: ['universal-communicator'],
+          Genre: 'Science Fiction',
+          Summary: ''
         };
       }
       
@@ -678,6 +696,7 @@ class OpenAIService {
       if (currentGameState) {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
+      
       
       // Add quest data to system context based on type (only current quest, not available quests)
       if (questData) {
@@ -739,7 +758,7 @@ class OpenAIService {
       console.log('📋 FULL OPENAI REQUEST:');
       console.log('='.repeat(80));
       const fullRequest = {
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -749,7 +768,7 @@ class OpenAIService {
       
       // Send to OpenAI
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -836,9 +855,8 @@ class OpenAIService {
       });
       
       let currentGameState = null;
+      
       if (lastConvo) {
-        // Generate conversation summary from recent descriptions for better context memory
-        const conversationSummary = this.generateConversationSummary(conversationHistory);
         
         // Build current game state from database
         currentGameState = {
@@ -862,7 +880,8 @@ class OpenAIService {
           Exits: {},  // Will be populated from location lookup
           Stats: lastConvo.stats ? JSON.parse(lastConvo.stats) : {},
           Inventory: lastConvo.inventory ? JSON.parse(lastConvo.inventory) : [],
-          Genre: 'Mystery'
+          Genre: 'Mystery',
+          Summary: lastConvo.summary || ''
         };
         
         // Look up exit information from location table
@@ -908,11 +927,12 @@ class OpenAIService {
           Level: '1',
           Description: '',
           Quest: '',
-          Location: 'Adventurer\'s Guild',
+          Location: 'Newspaper Office',
           Exits: {},
           Stats: {},
-          Inventory: ['pocket-lint'],
-          Genre: 'fantasy D&D'
+          Inventory: ['notebook', 'pen'],
+          Genre: 'Mystery',
+          Summary: ''
         };
       }
       
@@ -921,6 +941,7 @@ class OpenAIService {
       if (currentGameState) {
         systemContent += '\n\nCURRENT GAME STATE:\n' + JSON.stringify(currentGameState, null, 2);
       }
+      
       
       // Add quest data to system context based on type (only current quest, not available quests)
       if (questData) {
@@ -982,7 +1003,7 @@ class OpenAIService {
       console.log('📋 FULL OPENAI REQUEST:');
       console.log('='.repeat(80));
       const fullRequest = {
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -992,7 +1013,7 @@ class OpenAIService {
       
       // Send to OpenAI
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: this.gameModel,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500
@@ -1322,8 +1343,8 @@ Description: ${locationData.description}`;
         content: userContent
       });
 
-      // Query GPT (using gpt-4o-mini for faster responses)
-      const message = await this.queryGpt(requestMessages, 'gpt-4o-mini', temperature);
+      // Query GPT (using configured game model)
+      const message = await this.queryGpt(requestMessages, this.gameModel, temperature);
       const messageContent = message.content.strip ? message.content.strip() : message.content.trim();
 
       // Extract JSON from response
@@ -1435,7 +1456,8 @@ Description: ${locationData.description}`;
                 player: user,
                 datetime: new Date(),
                 ...initResponse.data,
-                conversation: JSON.stringify(initResponse)
+                conversation: JSON.stringify(initResponse),
+                summary: initResponse.data.summary || ''
               });
               
               console.log('✅ Custom world initialized successfully');
@@ -1601,6 +1623,7 @@ Description: ${locationData.description}`;
       }
       
       const imageRequestData = {
+        model: this.imageModel,
         prompt: enhancedPrompt,
         n: 1,
         size: '256x256'
@@ -1660,7 +1683,7 @@ Description: ${locationData.description}`;
         console.log(`🎭 Replaced placeholders: Setting="${customWorldData.worldDescription}", StartLocation="${customWorldData.startLocation}"`);
 
         const worldRequest = {
-          model: 'gpt-4o-mini',
+          model: this.worldModel,
           messages: [
             {
               role: 'system',
@@ -1714,7 +1737,7 @@ Description: ${locationData.description}`;
 
       // Create world generation request
       const worldRequest = {
-        model: 'gpt-4o-mini',
+        model: this.worldModel,
         messages: [
           {
             role: 'system',
@@ -1817,7 +1840,7 @@ Description: ${locationData.description}`;
       let response;
       try {
         response = await this.client.chat.completions.create({
-          model: 'gpt-4',
+          model: this.questModel,
           messages: [
             {
               role: 'user',

@@ -86,7 +86,8 @@ router.post('/fantasy-game', authenticateUser, async (req, res) => {
         stats: JSON.stringify(result.gameState.Stats || {}),
         genre: 'fantasy D&D',
         action: result.narrative,
-        conversation: result.rawResponse
+        conversation: result.rawResponse,
+        summary: result.gameState.Summary || ''
       });
       
       console.log('✅ Saved game state to database:', newConvo.id);
@@ -146,9 +147,10 @@ async function generateWorldLocations(username, genre = 'fantasy D&D', customWor
     console.log('Raw world data preview:', worldData.substring(0, 500));
     
     let locations;
+    let cleanedData = worldData; // Declare outside try block for error handling
+    
     try {
       // Clean up the response - remove any markdown formatting
-      let cleanedData = worldData;
       console.log('🔧 Original data starts with:', cleanedData.substring(0, 50));
       
       if (cleanedData.includes('```json')) {
@@ -158,6 +160,14 @@ async function generateWorldLocations(username, genre = 'fantasy D&D', customWor
       if (cleanedData.includes('json\n')) {
         cleanedData = cleanedData.replace(/json\n/g, '');
         console.log('🔧 Removed json label');
+      }
+      
+      // Find JSON array start - look for first [ character
+      let jsonStart = cleanedData.indexOf('[');
+      if (jsonStart > 0) {
+        console.log('🔧 Found JSON start at position:', jsonStart);
+        cleanedData = cleanedData.substring(jsonStart);
+        console.log('🔧 Extracted JSON from conversational response');
       }
       
       console.log('🔧 Cleaned data starts with:', cleanedData.substring(0, 50));
@@ -177,12 +187,48 @@ async function generateWorldLocations(username, genre = 'fantasy D&D', customWor
         }
       }
       
+      // Additional repair attempts for common JSON issues
+      if (jsonToTry.includes('},]')) {
+        jsonToTry = jsonToTry.replace(/},]/g, '}]');
+        console.log('🔧 Fixed trailing comma before closing bracket');
+      }
+      
       locations = JSON.parse(jsonToTry);
       console.log('✅ Successfully parsed JSON');
     } catch (parseError) {
       console.error('❌ Failed to parse world JSON:', parseError);
-      console.error('❌ Cleaned data that failed:', cleanedData.substring(0, 1000));
-      throw new Error(`Failed to parse world generation response: ${parseError.message}`);
+      console.error('❌ JSON data that failed:', cleanedData.substring(0, 1000));
+      
+      // Try one more aggressive repair attempt
+      if (cleanedData.includes('[') && parseError.message.includes('JSON at position')) {
+        console.log('🔧 Attempting aggressive JSON repair...');
+        try {
+          // Find all complete objects between { and }
+          const objects = [];
+          const regex = /\{\s*"name"\s*:\s*"[^"]*"[\s\S]*?\}/g;
+          let match;
+          while ((match = regex.exec(cleanedData)) !== null) {
+            try {
+              JSON.parse(match[0]);
+              objects.push(match[0]);
+            } catch (e) {
+              // Skip invalid objects
+            }
+          }
+          
+          if (objects.length > 0) {
+            const repairedJson = '[' + objects.join(',') + ']';
+            locations = JSON.parse(repairedJson);
+            console.log(`✅ Successfully repaired JSON with ${objects.length} locations`);
+          } else {
+            throw new Error(`Failed to parse world generation response: ${parseError.message}`);
+          }
+        } catch (repairError) {
+          throw new Error(`Failed to parse world generation response: ${parseError.message}`);
+        }
+      } else {
+        throw new Error(`Failed to parse world generation response: ${parseError.message}`);
+      }
     }
 
     if (!Array.isArray(locations)) {
@@ -554,7 +600,8 @@ router.post('/adv-api', authenticateUser, [
         stats: JSON.stringify(result.gameState.Stats || {}),
         genre: 'fantasy D&D',
         action: result.narrative,
-        conversation: result.rawResponse
+        conversation: result.rawResponse,
+        summary: result.gameState.Summary || ''
       });
       
       console.log('✅ Saved adventure game state to database');
@@ -767,7 +814,8 @@ router.post('/mys-api', authenticateUser, [
         stats: JSON.stringify(result.gameState.Stats || {}),
         genre: 'Mystery',
         action: result.narrative,
-        conversation: result.rawResponse
+        conversation: result.rawResponse,
+        summary: result.gameState.Summary || ''
       });
       
       console.log('✅ Saved mystery game state to database');
@@ -976,7 +1024,8 @@ router.post('/sci-api', authenticateUser, [
         stats: JSON.stringify(result.gameState.Stats || {}),
         genre: 'Science Fiction',
         action: result.narrative,
-        conversation: result.rawResponse
+        conversation: result.rawResponse,
+        summary: result.gameState.Summary || ''
       });
       
       console.log('✅ Saved sci-fi game state to database');
@@ -1112,7 +1161,8 @@ router.post('/custom-api', authenticateUser, [
         registered: responseData.data.registered || '',
         stats: responseData.data.stats || '',
         gold: responseData.data.gold || '0',
-        conversation: responseData.rawResponse || ''
+        conversation: responseData.rawResponse || '',
+        summary: responseData.data.summary || ''
       });
       
       // Trigger custom world generation when player gets registered

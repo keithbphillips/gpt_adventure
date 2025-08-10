@@ -14,18 +14,16 @@ Every exit in a location must have a corresponding return path in the target loc
 
 IMPORTANT: The first location in your JSON array MUST be the "{start_location}" as shown in the example below, as this is the required starting location for custom games.
 
-Output ONLY the JSON list of locations, like this:
+You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or comments. Start your response immediately with [ and end with ]. No other text should be included.
 
-json
-Copy
-Edit
+Example format:
 [
   {
-    "name": "start_location",
-    "description": "start_location_description",
+    "name": "{start_location}",
+    "description": "{start_location_description}",
     "exits": {
       "north": "somewhere north",
-      "east": "somewhere south"
+      "east": "somewhere east"
     }
   },
   ...

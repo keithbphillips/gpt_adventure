@@ -14,11 +14,9 @@ IMPORTANT: The first location in your JSON array MUST be the "Adventurer's Guild
 
 Every exit in a location must have a corresponding return path in the target location (e.g., if Location A has east: Location B, then Location B must have west: Location A).
 
-Output ONLY the JSON list of locations, like this:
+You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or comments. Start your response immediately with [ and end with ]. No other text should be included.
 
-json
-Copy
-Edit
+Example format:
 [
   {
     "name": "Adventurer's Guild",

@@ -88,6 +88,28 @@ Required environment variables:
 - JWT_SECRET: JWT token signing secret
 - SESSION_SECRET: Express session secret
 
+Optional model configuration variables (with defaults):
+- OPENAI_GAME_MODEL: Model for game conversations and turns (default: gpt-4o)
+- OPENAI_WORLD_MODEL: Model for world generation (default: gpt-4o)  
+- OPENAI_QUEST_MODEL: Model for quest generation (default: gpt-4)
+- OPENAI_IMAGE_MODEL: Model for image generation (default: dall-e-3)
+
+### Model Configuration Recommendations
+
+**For optimal performance and cost balance:**
+- **Game Model (OPENAI_GAME_MODEL)**: Use `gpt-4o` for best quality gameplay, or `gpt-4o-mini` for faster/cheaper responses
+- **World Model (OPENAI_WORLD_MODEL)**: Use `gpt-4o` for detailed worlds, or `gpt-4o-mini` for cost savings
+- **Quest Model (OPENAI_QUEST_MODEL)**: Use `gpt-4` for complex quest generation, or `gpt-4o-mini` for simpler quests
+- **Image Model (OPENAI_IMAGE_MODEL)**: Use `dall-e-3` for highest quality, or `dall-e-2` for cost savings
+
+**Model options:**
+- `gpt-4o`: Latest, fastest, highest quality (recommended for game interactions)
+- `gpt-4o-mini`: Faster and cheaper alternative with good quality
+- `gpt-4-turbo`: Previous generation, still high quality
+- `gpt-4`: Original GPT-4, good for complex reasoning tasks
+- `dall-e-3`: Latest image generation model
+- `dall-e-2`: Previous generation image model
+
 ## Game Types
 
 The application supports multiple game genres:

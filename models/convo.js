@@ -143,6 +143,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: '',
       comment: 'Raw OpenAI response content for debugging and analysis'
+    },
+    summary: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: ''
     }
   }, {
     tableName: 'convos',
