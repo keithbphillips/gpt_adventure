@@ -496,8 +496,8 @@
                 <button class="btn btn-warning" style="width: 100%; font-size: 14px; padding: 8px; margin-bottom: 5px;" id="restartGameBtn" title="Clear all game data and start fresh">
                     🔄 Restart Game
                 </button>
-                <button class="btn btn-info" style="width: 100%; font-size: 14px; padding: 8px;" id="regenerateWorldBtn" title="Generate a new world (takes up to 2 minutes)">
-                    🌍 Regenerate World
+                <button class="btn btn-info" style="width: 100%; font-size: 14px; padding: 8px;" id="regenerateWorldBtn" title="Clear custom world data and start fresh with Clerk">
+                    🌍 Reset Custom World
                 </button>
             </div>
         </div>
@@ -616,6 +616,7 @@ Enter commands to shape your unique world...<br>
                 // Add user message to terminal
                 this.addToTerminal(`> ${message}`, 'user-message');
                 
+                let isWorldGenerating = false;
                 try {
                     const response = await fetch(this.apiEndpoint, {
                         method: 'POST',
@@ -635,10 +636,13 @@ Enter commands to shape your unique world...<br>
                     
                     const data = await response.json();
                     
-                    // Add AI response to terminal (with sanitization check)
+                    // Debug log the response data
+                    console.log('🎮 Custom game response data:', data);
+                    
+                    // Normal flow - add AI response to terminal (with sanitization check)
                     const cleanContent = this.sanitizeDisplayContent(data.content);
                     this.addToTerminal(cleanContent, 'ai-message');
-                    
+
                     // Update game stats
                     if (data.data) {
                         this.updateGameStats(data.data);
@@ -651,7 +655,10 @@ Enter commands to shape your unique world...<br>
                 } catch (error) {
                     this.addToTerminal('Error: Could not connect to game server.', 'error-message');
                 } finally {
-                    this.setLoading(false);
+                    // Only turn off loading if we're not generating world
+                    if (!isWorldGenerating) {
+                        this.setLoading(false);
+                    }
                 }
             }
             
@@ -957,95 +964,41 @@ Enter commands to shape your unique world...<br>
             }
             
             async regenerateWorld() {
-                if (!confirm('Are you sure you want to regenerate the world? This will create a completely new world with new locations. This process may take up to 2 minutes. The current world will be permanently replaced.')) {
+                if (!confirm('Are you sure you want to reset your custom world? This will clear all existing data and you can start fresh with the Clerk to define a new custom universe.')) {
                     return;
                 }
                 
                 this.setLoading(true);
-                this.addToTerminal('[SYSTEM] Starting world regeneration... This may take up to 2 minutes. Please wait.', 'system-message');
+                this.addToTerminal('[SYSTEM] Clearing custom world data...', 'system-message');
                 
                 try {
-                    const response = await fetch('/api/generate-world', {
+                    const response = await fetch('/api/clear-custom-world', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
-                        },
-                        body: JSON.stringify({
-                            genre: 'Custom',
-                            force: true
-                        })
+                        }
                     });
                     
                     if (response.ok) {
                         const data = await response.json();
-                        this.addToTerminal(`[SYSTEM] World regeneration complete! Generated ${data.message}`, 'system-message');
+                        this.addToTerminal('[SYSTEM] Custom world data cleared successfully!', 'system-message');
                         if (data.cleared) {
-                            this.addToTerminal(`[SYSTEM] Cleared ${data.cleared.conversations} conversations, ${data.cleared.locations} locations, and ${data.cleared.images} images`, 'system-message');
+                            this.addToTerminal(`[SYSTEM] Cleared ${data.cleared.conversations} conversations, ${data.cleared.locations} locations, ${data.cleared.images} images, and ${data.cleared.quests} quests`, 'system-message');
                         }
-                        this.addToTerminal('[SYSTEM] The new world is ready for exploration!', 'system-message');
+                        this.addToTerminal('[SYSTEM] You can now start fresh! Talk to the Clerk to define your new custom universe.', 'system-message');
                         
-                        // Reset game stats before starting new world
+                        // Reset game stats and clear display
                         this.resetGameStats();
                         this.updateExits('');
-                        
-                        // Automatically send "look around" command to start exploring the new world
-                        setTimeout(async () => {
-                            this.addToTerminal('[SYSTEM] Starting exploration of new world...', 'system-message');
-                            this.input.value = 'look around';
-                            
-                            // Send the look around command and ensure stats are updated
-                            try {
-                                this.setLoading(true);
-                                const response = await fetch(this.apiEndpoint, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
-                                    },
-                                    body: JSON.stringify({
-                                        input_text: 'look around',
-                                        mylocation: 'start'
-                                    })
-                                });
-                                
-                                if (response.ok) {
-                                    const data = await response.json();
-                                    console.log('🔍 Look around response after world regen:', data);
-                                    
-                                    // Add AI response to terminal
-                                    const cleanContent = this.sanitizeDisplayContent(data.content);
-                                    this.addToTerminal(`> look around`, 'user-message');
-                                    this.addToTerminal(cleanContent, 'ai-message');
-                                    
-                                    // Force update game stats
-                                    if (data.data) {
-                                        console.log('🎮 Updating game stats with:', data.data);
-                                        this.updateGameStats(data.data);
-                                        if (data.data.Genre) {
-                                            this.currentGenre = data.data.Genre.toLowerCase();
-                                        }
-                                    } else {
-                                        console.warn('⚠️ No game data in response');
-                                    }
-                                } else {
-                                    throw new Error(`HTTP error! status: ${response.status}`);
-                                }
-                            } catch (error) {
-                                console.error('❌ Auto look around failed:', error);
-                                this.addToTerminal('Error: Could not start exploration. Try typing "look around" manually.', 'error-message');
-                            } finally {
-                                this.setLoading(false);
-                                this.input.value = '';
-                            }
-                        }, 1500);
+                        this.showImagePlaceholder();
                     } else {
                         const errorData = await response.json().catch(() => null);
                         throw new Error(errorData?.details || `HTTP error! status: ${response.status}`);
                     }
                 } catch (error) {
-                    console.error('World regeneration error:', error);
-                    this.addToTerminal('Error: Failed to regenerate world. Please try again.', 'error-message');
+                    console.error('Clear custom world error:', error);
+                    this.addToTerminal('Error: Failed to clear custom world data. Please try again.', 'error-message');
                 } finally {
                     this.setLoading(false);
                 }

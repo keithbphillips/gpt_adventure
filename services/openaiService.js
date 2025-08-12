@@ -1197,7 +1197,7 @@ Keep your narrative response concise and engaging.`;
           'adventure': 'Adventurer\'s Guild',
           'scifi': 'Unemployment Center',
           'mystery': 'Newspaper Office',
-          'custom': 'Starting Location' // This will be customized per game
+          'custom': 'start' // Consistent location name for custom games
         };
         return defaultLocations[gameType] || 'Adventurer\'s Guild';
       };
@@ -1372,99 +1372,6 @@ Description: ${locationData.description}`;
             notes: jsonData.OtherNotes || ''
           };
           
-          // Trigger world generation asynchronously (don't block the response)
-          setTimeout(async () => {
-            try {
-              console.log('🌍 Generating custom world with registration data...');
-              
-              // Import the generateWorldLocations function from routes/api.js
-              // We need to replicate the logic here to save to database
-              const { Location } = require('../models');
-              const genre = 'Custom';
-              
-              // Generate world using OpenAI with custom data
-              const worldData = await this.generateWorld(user, 'custom', customWorldData);
-              
-              // Parse JSON response and save to database
-              console.log('🔧 Parsing and saving world JSON data...');
-              let locations;
-              try {
-                // Clean up the response - remove any markdown formatting
-                let cleanedData = worldData;
-                
-                if (cleanedData.includes('```json')) {
-                  cleanedData = cleanedData.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-                }
-                if (cleanedData.includes('json\n')) {
-                  cleanedData = cleanedData.replace(/json\n/g, '');
-                }
-                
-                cleanedData = cleanedData.trim();
-                if (!cleanedData.startsWith('[')) {
-                  const jsonStart = cleanedData.indexOf('[');
-                  if (jsonStart !== -1) {
-                    cleanedData = cleanedData.substring(jsonStart);
-                  }
-                }
-                
-                locations = JSON.parse(cleanedData);
-                console.log(`🔧 Parsed ${locations.length} locations`);
-              } catch (parseError) {
-                console.error('❌ JSON parsing failed:', parseError);
-                throw parseError;
-              }
-              
-              // Save locations to database
-              for (const location of locations) {
-                try {
-                  await Location.create({
-                    player: user,
-                    name: location.name,
-                    description: location.description,
-                    exits: JSON.stringify(location.exits || {}),
-                    genre: genre,
-                    datetime: new Date()
-                  });
-                } catch (locationError) {
-                  console.error(`❌ Failed to save location "${location.name}":`, locationError);
-                }
-              }
-              
-              console.log(`✅ Custom world generation completed - saved ${locations.length} locations`);
-              
-              // After world generation, trigger an automatic "look around" with custom instructions
-              console.log('🎮 Switching to custom game instructions and initializing world...');
-              
-              // Get the updated messages (including the current registration response)
-              const { Convo } = require('../models');
-              const updatedMessages = await Convo.findAll({
-                where: { 
-                  player: user,
-                  genre: 'Custom'
-                },
-                order: [['id', 'DESC']],
-                limit: 7,
-                raw: true
-              });
-              
-              // Process "look around" command with custom instructions
-              // Force custom instructions by calling processGameTurn with a flag indicating registration is complete
-              const initResponse = await this.processCustomGameTurn(user, updatedMessages.reverse(), 'look around');
-              
-              // Save the initialization response to database 
-              await Convo.create({
-                player: user,
-                datetime: new Date(),
-                ...initResponse.data,
-                conversation: JSON.stringify(initResponse),
-                summary: initResponse.data.summary || ''
-              });
-              
-              console.log('✅ Custom world initialized successfully');
-            } catch (error) {
-              console.error('❌ Custom world generation/initialization failed:', error);
-            }
-          }, 2000); // Slightly longer delay to ensure registration is saved first
         }
 
         // Use Description as narrative if message text is empty
@@ -1677,8 +1584,8 @@ Description: ${locationData.description}`;
         // Replace placeholders with custom data from registration
         worldInstructions = worldInstructions.replace('{world_description}', customWorldData.worldDescription || 'fantasy world');
         worldInstructions = worldInstructions.replace('{location_examples}', customWorldData.locationExamples || 'various locations');
-        worldInstructions = worldInstructions.replace('{start_location}', customWorldData.startLocation || 'Starting Location');
-        worldInstructions = worldInstructions.replace('start_location_description', customWorldData.startLocationDescription || 'This is where your adventure begins.');
+        worldInstructions = worldInstructions.replace('{start_location}', 'start'); // Always use 'start' for consistency with game logic
+        worldInstructions = worldInstructions.replace('{start_location_description}', customWorldData.startLocationDescription || `This is where your adventure begins in ${customWorldData.worldDescription || 'your custom world'}.`);
         
         console.log(`🎭 Replaced placeholders: Setting="${customWorldData.worldDescription}", StartLocation="${customWorldData.startLocation}"`);
 
@@ -1729,8 +1636,8 @@ Description: ${locationData.description}`;
       if (gameType.toLowerCase() === 'custom') {
         worldInstructions = worldInstructions.replace('{world_description}', 'fantasy adventure world');
         worldInstructions = worldInstructions.replace('{location_examples}', 'villages, forests, dungeons, mountains, castles, taverns, shops');
-        worldInstructions = worldInstructions.replace('{start_location}', 'Starting Location');
-        worldInstructions = worldInstructions.replace('start_location_description', 'This is where your adventure begins in this fantasy world.');
+        worldInstructions = worldInstructions.replace('{start_location}', 'start'); // Consistent with game logic
+        worldInstructions = worldInstructions.replace('{start_location_description}', 'This is where your adventure begins in this fantasy world.');
       }
 
       console.log(`World generation instructions loaded from: ${filename}`);

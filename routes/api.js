@@ -1166,7 +1166,8 @@ router.post('/custom-api', authenticateUser, [
       });
       
       // Trigger custom world generation when player gets registered
-      if (responseData.data.registered === 'true') {
+      console.log('🎨 Checking registration status:', responseData.data.registered, 'type:', typeof responseData.data.registered);
+      if (responseData.data.registered === 'true' || responseData.data.registered === true) {
         console.log('🎨 Player just got registered, checking if custom world generation needed...');
         
         // Check if world already exists
@@ -1175,18 +1176,122 @@ router.post('/custom-api', authenticateUser, [
         });
         
         if (existingLocations === 0) {
-          console.log('🌍 Generating custom world asynchronously...');
+          console.log('🌍 Generating custom world synchronously and returning complete result...');
           
-          // Extract custom world data from the game state and responses
-          const customWorldData = {
-            worldDescription: responseData.data.genre || 'custom world',
+          // Extract custom world data from the Clerk conversation
+          let customWorldData = {
+            worldDescription: 'custom world',
             locationExamples: 'various locations appropriate for the custom setting'
           };
           
-          // Generate world asynchronously to not block the response
-          generateWorldLocations(username, 'Custom', customWorldData).catch(error => {
-            console.error('❌ Async custom world generation failed:', error);
-          });
+          // Parse the detailed world information from the Clerk's response
+          try {
+            const rawResponse = responseData.rawResponse || responseData.content;
+            console.log('🎭 Parsing custom world data from response:', rawResponse.substring(0, 500));
+            
+            // Extract JSON from the Clerk's final registration
+            const jsonMatch = rawResponse.match(/```json\s*\n({[\s\S]*?})\s*\n```/);
+            if (jsonMatch) {
+              const worldInfo = JSON.parse(jsonMatch[1]);
+              console.log('🎭 Extracted world info:', worldInfo);
+              
+              customWorldData = {
+                worldDescription: worldInfo.Setting || worldInfo.setting || 'custom world',
+                startLocation: worldInfo.StartLocation || worldInfo.startLocation || 'start',
+                tone: worldInfo.Tone || worldInfo.tone || '',
+                currency: worldInfo.Currency || worldInfo.currency || 'gold',
+                otherNotes: worldInfo.OtherNotes || worldInfo.otherNotes || '',
+                locationExamples: `${worldInfo.Setting || 'custom world'} themed locations`
+              };
+              console.log('🎭 Final custom world data:', customWorldData);
+            } else {
+              console.log('🎭 No JSON found in response, using generic custom world data');
+            }
+          } catch (error) {
+            console.error('🎭 Error parsing custom world data:', error);
+            console.log('🎭 Using fallback custom world data');
+          }
+          
+          try {
+            // Generate world synchronously
+            console.log('🌍 Starting synchronous world generation...');
+            await generateWorldLocations(username, 'Custom', customWorldData);
+            console.log('✅ Custom world generation completed successfully');
+            
+            // After world generation, automatically execute "look around" command
+            console.log('🎮 Auto-executing look around command after world generation');
+            
+            // Get updated conversation history including world generation completion
+            const updatedMessages = await Convo.findAll({
+              where: { 
+                player: username,
+                genre: 'Custom'
+              },
+              order: [['id', 'DESC']],
+              limit: 7,
+              raw: true
+            });
+            
+            // Process "look around" command
+            const lookAroundResponse = await openaiService.processGameTurn(
+              username, 
+              updatedMessages.reverse(), 
+              'look around',
+              'custom'
+            );
+            
+            // Save the look around response
+            if (lookAroundResponse.data && lookAroundResponse.content) {
+              await Convo.create({
+                player: username,
+                contentUser: 'look around',
+                contentAssistant: lookAroundResponse.content,
+                action: lookAroundResponse.data.action || lookAroundResponse.content,
+                genre: lookAroundResponse.data.genre || 'Custom',
+                name: lookAroundResponse.data.name || '',
+                playerClass: lookAroundResponse.data.playerClass || '',
+                race: lookAroundResponse.data.race || '',
+                turn: lookAroundResponse.data.turn || '1',
+                timePeriod: lookAroundResponse.data.timePeriod || '',
+                dayNumber: lookAroundResponse.data.dayNumber || '1',
+                weather: lookAroundResponse.data.weather || '',
+                health: lookAroundResponse.data.health || '',
+                xp: lookAroundResponse.data.xp || '0',
+                ac: lookAroundResponse.data.ac || '10',
+                level: lookAroundResponse.data.level || '1',
+                description: lookAroundResponse.data.description || '',
+                quest: lookAroundResponse.data.quest || '',
+                location: lookAroundResponse.data.location || 'start',
+                exits: lookAroundResponse.data.exits || '',
+                inventory: lookAroundResponse.data.inventory || '',
+                gender: lookAroundResponse.data.gender || '',
+                registered: lookAroundResponse.data.registered || '',
+                stats: lookAroundResponse.data.stats || '',
+                gold: lookAroundResponse.data.gold || '0',
+                conversation: lookAroundResponse.rawResponse || '',
+                summary: lookAroundResponse.data.summary || ''
+              });
+            }
+            
+            // Replace the original registration response with the look around response
+            console.log('🎮 Returning look around response after world generation');
+            
+            // Add completion message to the look around content
+            lookAroundResponse.content = '[SYSTEM] World generation complete! Your custom universe is ready for exploration.\n\n' + lookAroundResponse.content;
+            
+            return res.json(lookAroundResponse);
+            
+          } catch (worldGenError) {
+            console.error('❌ Custom world generation failed:', worldGenError);
+            console.error('❌ Stack trace:', worldGenError.stack);
+            
+            // Return error response if world generation fails
+            return res.status(500).json({
+              success: false,
+              error: 'World generation failed. Please try again.',
+              content: 'Error: World generation failed.'
+            });
+          }
         }
       }
     }
@@ -1411,6 +1516,73 @@ router.post('/generate-world', authenticateUser, async (req, res) => {
     console.error('Manual world generation failed:', error);
     res.status(500).json({ 
       error: 'Failed to generate world',
+      details: error.message 
+    });
+  }
+});
+
+// Clear Custom world data only (without regenerating)
+router.post('/clear-custom-world', authenticateUser, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const genre = 'Custom';
+    
+    console.log(`🗑️ Clearing Custom world data for ${username}`);
+    
+    let deletedLocations = 0, deletedConvos = 0, deletedImages = 0, deletedQuests = 0;
+    
+    // Clear locations
+    deletedLocations = await Location.destroy({ 
+      where: { player: username, genre: genre } 
+    });
+    console.log(`🗑️ Deleted ${deletedLocations} existing locations`);
+    
+    // Clear conversations for Custom genre
+    deletedConvos = await Convo.destroy({
+      where: { player: username, genre: genre }
+    });
+    console.log(`🗑️ Deleted ${deletedConvos} conversation records`);
+    
+    // Clear images for Custom genre (handle missing genre column gracefully)
+    try {
+      deletedImages = await Picmap.destroy({
+        where: { player: username, genre: genre }
+      });
+      console.log(`🗑️ Deleted ${deletedImages} image records`);
+    } catch (dbError) {
+      if (dbError.message.includes('no such column: genre')) {
+        console.log('🗑️ Genre column not found in picmaps table, clearing all images for player');
+        deletedImages = await Picmap.destroy({
+          where: { player: username }
+        });
+        console.log(`🗑️ Deleted ${deletedImages} image records (all genres)`);
+      } else {
+        throw dbError;
+      }
+    }
+    
+    // Clear quests for Custom genre
+    deletedQuests = await Quest.destroy({
+      where: { player: username, genre: genre }
+    });
+    console.log(`🗑️ Deleted ${deletedQuests} quest records`);
+    
+    res.json({
+      success: true,
+      message: 'Custom world data cleared successfully',
+      player: username,
+      genre: genre,
+      cleared: {
+        locations: deletedLocations,
+        conversations: deletedConvos,
+        images: deletedImages,
+        quests: deletedQuests
+      }
+    });
+  } catch (error) {
+    console.error('Clear Custom world data failed:', error);
+    res.status(500).json({ 
+      error: 'Failed to clear Custom world data',
       details: error.message 
     });
   }
