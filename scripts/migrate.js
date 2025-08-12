@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { sequelize, Quest } = require('../models');
+const { sequelize } = require('../models');
 
 async function migrate() {
   try {
@@ -12,17 +12,22 @@ async function migrate() {
     console.log('Available models:', Object.keys(sequelize.models));
     
     console.log('🔄 Running database sync...');
-    // Only sync the Quest model to avoid altering existing tables
-    await Quest.sync({ force: false });
-    console.log('✅ Quest table sync completed');
+    // Sync all models to create all necessary tables
+    await sequelize.sync({ force: false });
+    console.log('✅ All tables synchronized');
     
-    // Verify the quests table was created
-    const [results] = await sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name='quests'");
-    if (results.length > 0) {
-      console.log('✅ Quests table created successfully');
+    // Verify tables were created
+    const dialect = sequelize.getDialect();
+    let query;
+    if (dialect === 'sqlite') {
+      query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
     } else {
-      console.log('❌ Quests table was not created');
+      query = "SELECT tablename FROM pg_tables WHERE schemaname = 'public'";
     }
+    
+    const [results] = await sequelize.query(query);
+    const tableNames = results.map(row => row.name || row.tablename);
+    console.log('✅ Created tables:', tableNames.join(', '));
     
     process.exit(0);
   } catch (error) {
